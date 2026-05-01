@@ -2,7 +2,15 @@ from flask import Flask, jsonify, send_from_directory, request
 import yfinance as yf
 from yfinance import EquityQuery, screen
 import json, os, time, threading, math
+import requests
 from dotenv import load_dotenv
+
+# Force a 30-second timeout on every outbound HTTP request (yfinance has no timeout by default)
+_orig_request = requests.Session.request
+def _request_with_timeout(self, method, url, **kwargs):
+    kwargs.setdefault('timeout', 30)
+    return _orig_request(self, method, url, **kwargs)
+requests.Session.request = _request_with_timeout
 
 load_dotenv()
 
@@ -25,12 +33,15 @@ _mkt_cache    = {'data': None, 'ts': 0}
 # ── yfinance screener ──────────────────────────────────────────────────────
 
 def fetch_all_tase():
+    print('[Fetch] Starting fetch_all_tase', flush=True)
     q = EquityQuery('eq', ['exchange', 'TLV'])
     all_quotes, offset, page_size = [], 0, 100
     while True:
+        print(f'[Fetch] Requesting offset={offset}', flush=True)
         result = screen(q, sortField='intradaymarketcap', sortAsc=False,
                         offset=offset, size=page_size)
         quotes = result.get('quotes', [])
+        print(f'[Fetch] Got {len(quotes)} quotes (total={result.get("total", "?")})', flush=True)
         if not quotes:
             break
         all_quotes.extend(quotes)
@@ -40,6 +51,7 @@ def fetch_all_tase():
             break
     stocks = [p for p in (parse_quote(s) for s in all_quotes) if p]
     stocks.sort(key=lambda x: x.get('market_cap') or 0, reverse=True)
+    print(f'[Fetch] Done — {len(stocks)} stocks', flush=True)
     return stocks
 
 
