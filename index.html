@@ -456,12 +456,36 @@
     @media (max-width: 760px) {
       .insight-shell { grid-template-columns: 1fr; }
       .metric-strip { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+      /* Heatmap panel first among panels on mobile */
+      .metric-strip  { order: 0; }
+      .panel-heatmap { order: 1; }
+      .insight-panel { order: 2; }
     }
     @media (max-width: 720px) {
       #site-header { padding: 0 14px; gap: 8px; }
       .logo-sub, .badge-count { display: none; }
       #top-tabs, #market-bar, #pill-bar, .filters, .insight-shell, #focus-view, .table-caption { padding-left: 14px; padding-right: 14px; }
       .metric-strip { grid-template-columns: 1fr; }
+
+      /* ── Compact table for landscape mobile ── */
+      /* Hide name and sparkline — ticker already identifies the stock */
+      th.col-name, td.col-name,
+      th.col-spark, td.col-spark { display: none; }
+
+      /* Tighter cell padding */
+      td { padding: 0 5px; font-size: 11.5px; }
+      thead th { padding: 0 5px; height: 30px; font-size: 9px; }
+      .col-ticker { padding-left: 10px !important; }
+      thead th.col-ticker { padding-left: 10px; }
+
+      /* Smaller score chip */
+      .score-chip { width: 34px; height: 18px; font-size: 10px; }
+
+      /* Truncate sector pill if visible */
+      .sector-pill { max-width: 70px; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
+
+      /* Rating badge compact */
+      .rating-badge { padding: 1px 5px; font-size: 9px; }
     }
 
     /* ── Loading overlay (first run only) ───────────────────────────── */
@@ -675,7 +699,7 @@
     <div class="sector-bars" id="sector-leaders"></div>
   </div>
 
-  <div class="insight-panel" onclick="openFocusView('heatmap')" style="display:flex;flex-direction:column;cursor:pointer">
+  <div class="insight-panel panel-heatmap" onclick="openFocusView('heatmap')" style="display:flex;flex-direction:column;cursor:pointer">
     <div class="panel-head" style="margin-bottom:7px">
       <div class="panel-title">Market Heatmap</div>
       <div class="panel-sub" style="font-size:9px">click to expand</div>
