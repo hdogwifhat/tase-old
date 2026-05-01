@@ -1,0 +1,1836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TASE Screener</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:        #0a0a0b;
+      --surface:   #111115;
+      --surface2:  #18181d;
+      --surface3:  #1e1e25;
+      --border:    #1f1f28;
+      --border2:   #28282f;
+      --text:      #f4f4f5;
+      --text2:     #a1a1aa;
+      --text3:     #52525b;
+      --accent:    #0066cc;
+      --accent-h:  #0052a3;
+      --accent-dim:#001f3d;
+      --green:     #22c55e;
+      --green-dim: #052e16;
+      --green-bg:  rgba(34,197,94,0.12);
+      --red:       #ef4444;
+      --red-dim:   #2d0e0e;
+      --red-bg:    rgba(239,68,68,0.12);
+      --amber:     #f59e0b;
+      --amber-dim: #2d1f05;
+      /* row height — changed by density toggle */
+      --row-h:     44px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { letter-spacing: 0 !important; }
+    html { font-size: 14px; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg); color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      display: flex; flex-direction: column; min-height: 100vh;
+    }
+    .hidden { display: none !important; }
+
+    /* Top loading bar */
+    #top-bar {
+      position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 999;
+      background: var(--accent);
+      transform-origin: left;
+      transform: scaleX(0);
+      transition: transform 0.4s ease, opacity 0.4s ease;
+      opacity: 0;
+    }
+    #top-bar.active { opacity: 1; }
+
+    /* ── Header ──────────────────────────────────────────────────────── */
+    #site-header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 24px; height: 52px;
+      display: flex; align-items: center; gap: 16px;
+      flex-shrink: 0; z-index: 50;
+      position: sticky; top: 0;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo-mark { width: 28px; height: 28px; background: var(--accent); border-radius: 6px;
+                  display: flex; align-items: center; justify-content: center;
+                  font-size: 14px; font-weight: 800; color: #fff; letter-spacing: -1px; }
+    .logo-text { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.4px; }
+    .logo-sub  { font-size: 11px; color: var(--text3); padding-left: 10px;
+                  border-left: 1px solid var(--border2); }
+    .badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 20px; letter-spacing: 0.02em; }
+    .badge-live    { background: var(--green-dim); color: var(--green);  border: 1px solid #166534; }
+    .badge-cached  { background: var(--accent-dim); color: #60a5fa;      border: 1px solid #1e3a5f; }
+    .badge-loading { background: var(--amber-dim);  color: var(--amber); border: 1px solid #713f12; }
+    .badge-count   { background: var(--surface2); color: var(--text2); border: 1px solid var(--border2); }
+    .badge-enrich  { background: #160d38; color: #a78bfa; border: 1px solid #3b0764; font-size: 9px; }
+    .spacer { flex: 1; }
+
+    /* Density toggle */
+    .density-btns { display: flex; gap: 2px; background: var(--surface2);
+                     border: 1px solid var(--border); border-radius: 6px; padding: 2px; }
+    .dbtn { background: transparent; border: none; color: var(--text3); padding: 3px 8px;
+             font-size: 11px; cursor: pointer; border-radius: 4px; font-family: inherit; }
+    .dbtn:hover { color: var(--text2); background: var(--surface3); }
+    .dbtn.active { background: var(--accent); color: #fff; }
+
+    .hdr-btn { font-size: 12px; font-weight: 500; padding: 6px 14px;
+                font-family: inherit; border: none; border-radius: 6px; cursor: pointer; }
+    #btn-cols    { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+    #btn-cols:hover { background: var(--surface3); color: var(--text); }
+    #btn-refresh { background: var(--accent); color: #fff; }
+    #btn-refresh:hover { background: var(--accent-h); }
+    #btn-refresh:disabled { background: var(--surface2); color: var(--text3); cursor: default; }
+
+    #top-tabs {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 7px 24px; display: flex; align-items: center; gap: 6px;
+      flex-shrink: 0; overflow-x: auto; white-space: nowrap; z-index: 49;
+      position: sticky; top: 52px;
+    }
+    #top-tabs::-webkit-scrollbar { display: none; }
+    .top-tab {
+      background: transparent; border: 1px solid var(--border2); color: var(--text2);
+      border-radius: 6px; padding: 7px 12px; font-size: 12px; font-weight: 600;
+      font-family: inherit; cursor: pointer; min-height: 31px;
+    }
+    .top-tab:hover { border-color: var(--accent); color: var(--text); background: var(--surface2); }
+    .top-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    #content-scroll {
+      flex: 1;
+      display: flex; flex-direction: column;
+      background: var(--bg);
+    }
+
+    /* ── Market bar ──────────────────────────────────────────────────── */
+    #market-bar {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 24px; height: 34px;
+      display: flex; align-items: center; gap: 0;
+      flex-shrink: 0; z-index: 48;
+      overflow-x: auto; white-space: nowrap;
+      font-size: 12px;
+    }
+    #market-bar::-webkit-scrollbar { display: none; }
+    .mkt-seg { display: flex; align-items: center; gap: 8px; padding: 0 16px; }
+    .mkt-seg + .mkt-seg { border-left: 1px solid var(--border2); }
+    .mkt-lbl { font-size: 10px; font-weight: 700; color: var(--text3);
+                text-transform: uppercase; letter-spacing: 0.06em; }
+    .mkt-price { font-weight: 600; color: var(--text);
+                  font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+    .mkt-chg { font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .mkt-up   { color: var(--green); }
+    .mkt-down { color: var(--red); }
+
+    /* ── Filter pills bar ────────────────────────────────────────────── */
+    #pill-bar {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 24px; height: 42px;
+      display: flex; align-items: center; gap: 4px;
+      flex-shrink: 0; z-index: 47;
+      overflow-x: auto; white-space: nowrap;
+    }
+    #pill-bar::-webkit-scrollbar { display: none; }
+    .pill { background: transparent; border: 1px solid var(--border2); color: var(--text2);
+             font-size: 12px; font-weight: 500; padding: 5px 14px; border-radius: 20px;
+             cursor: pointer; font-family: inherit; transition: all 0.15s; }
+    .pill:hover { border-color: var(--accent); color: var(--text); }
+    .pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .pill-sep { width: 1px; height: 18px; background: var(--border2); margin: 0 6px; flex-shrink: 0; }
+
+    /* ── Column panel ────────────────────────────────────────────────── */
+    #cols-panel {
+      position: fixed; top: 56px; right: 16px; z-index: 60;
+      background: var(--surface); border: 1px solid var(--border2);
+      border-radius: 10px; padding: 16px; width: 400px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+    }
+    .cols-title { font-size: 11px; font-weight: 700; color: var(--text3);
+                   text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+    .cols-actions { display: flex; gap: 6px; margin-bottom: 12px; }
+    .cols-actions button { font-size: 11px; padding: 4px 10px; border-radius: 5px;
+                            background: var(--surface2); color: var(--text2);
+                            border: 1px solid var(--border); font-family: inherit; cursor: pointer; }
+    .cols-actions button:hover { background: var(--surface3); color: var(--text); }
+    .cols-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3px; }
+    .col-tog { display: flex; align-items: center; gap: 6px; font-size: 11.5px;
+                color: var(--text2); cursor: pointer; padding: 5px 8px; border-radius: 5px; user-select: none; }
+    .col-tog:hover { background: var(--surface2); color: var(--text); }
+    .col-tog input { width: 13px; height: 13px; accent-color: var(--accent); cursor: pointer; }
+    .col-tog.locked { opacity: 0.3; cursor: default; }
+    .col-tog.locked:hover { background: transparent; }
+
+    /* ── Advanced filters bar ────────────────────────────────────────── */
+    .filters {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 8px 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      flex-shrink: 0; z-index: 46;
+    }
+    .fg { display: flex; align-items: center; gap: 5px; }
+    .fg label { font-size: 10px; font-weight: 600; color: var(--text3); white-space: nowrap;
+                 text-transform: uppercase; letter-spacing: 0.05em; }
+    input[type="text"], input[type="number"], select {
+      background: var(--bg); border: 1px solid var(--border2); color: var(--text);
+      padding: 5px 9px; border-radius: 6px; font-size: 12px; font-family: inherit; }
+    input[type="text"] { width: 160px; }
+    input[type="number"] { width: 78px; }
+    select { cursor: pointer; }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    input::placeholder { color: var(--text3); }
+    select option { background: var(--surface); }
+    .f-sep { width: 1px; height: 20px; background: var(--border2); margin: 0 2px; flex-shrink: 0; }
+    .btn-clear { background: var(--surface2); color: var(--text2); font-size: 11px;
+                  padding: 5px 11px; border: 1px solid var(--border); border-radius: 6px;
+                  cursor: pointer; font-family: inherit; }
+    .btn-clear:hover { background: var(--surface3); color: var(--text); }
+
+    /* ── Table ───────────────────────────────────────────────────────── */
+    .table-wrap { min-height: 700px; overflow-x: auto; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      background: var(--surface); color: var(--text3); font-weight: 600;
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0 12px; height: 36px; text-align: right; white-space: nowrap;
+      cursor: pointer; user-select: none; border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 2;
+      font-family: 'Inter', sans-serif;
+    }
+    thead th:hover { color: var(--text2); background: var(--surface2); }
+    thead th.sorted { color: var(--accent); }
+    .arr { margin-left: 3px; font-size: 9px; opacity: 0.7; }
+    tbody tr {
+      border-bottom: 1px solid #0f0f14;
+      transition: background 0.1s;
+    }
+    tbody tr:hover { background: #141419; }
+    td {
+      padding: 0 12px; height: var(--row-h);
+      text-align: right; color: var(--text2); vertical-align: middle;
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Column alignment */
+    .col-ticker, .col-name, .col-sector  { text-align: left !important; }
+    .col-ticker  { padding-left: 24px !important; }
+    .col-analyst_rating { text-align: center !important; }
+    thead th.col-ticker, thead th.col-name, thead th.col-sector { text-align: left; }
+    thead th.col-ticker  { padding-left: 24px; }
+    thead th.col-analyst_rating { text-align: center; }
+
+    /* Value types */
+    .ticker {
+      font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 12.5px;
+      color: var(--accent); cursor: pointer; letter-spacing: 0.04em;
+      font-variant-numeric: tabular-nums;
+    }
+    .ticker:hover { color: #60a5fa; }
+    .co-name { color: var(--text); max-width: 180px; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; display: block; font-size: 13px; }
+    .pos  { color: var(--green); }
+    .neg  { color: var(--red); }
+    .zero { color: var(--text2); }
+    .na   { color: #2a2a35; }
+
+    .score-chip {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 42px; height: 22px; border-radius: 5px;
+      font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+      color: var(--text);
+      border: 1px solid var(--border2);
+      background: var(--surface2);
+    }
+    .score-high { color: var(--green); background: rgba(34,197,94,0.11); border-color: rgba(34,197,94,0.32); }
+    .score-mid  { color: var(--amber); background: rgba(245,158,11,0.10); border-color: rgba(245,158,11,0.28); }
+    .score-low  { color: var(--red); background: rgba(239,68,68,0.10); border-color: rgba(239,68,68,0.28); }
+
+    .rating-badge { font-size: 10px; font-weight: 700; padding: 2px 8px;
+                     border-radius: 4px; white-space: nowrap; display: inline-block; letter-spacing: 0.04em; }
+    .rating-buy  { background: var(--green-dim); color: var(--green); border: 1px solid #166534; }
+    .rating-hold { background: var(--amber-dim); color: var(--amber); border: 1px solid #713f12; }
+    .rating-sell { background: var(--red-dim);   color: var(--red);   border: 1px solid #7f1d1d; }
+    .sector-pill { font-size: 10.5px; color: #60a5fa; background: #001a33;
+                    border: 1px solid #1e3a5f; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+
+    /* Sparkline cell */
+    .col-spark { width: 88px; }
+    .spark-svg { overflow: visible; display: block; }
+
+    /* ── Skeleton loader ─────────────────────────────────────────────── */
+    .skel {
+      display: inline-block; border-radius: 4px;
+      background: linear-gradient(90deg, #131318 25%, #1c1c24 50%, #131318 75%);
+      background-size: 400% 100%;
+      animation: shimmer 1.6s ease-in-out infinite;
+    }
+    @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+    .no-results { text-align: center; padding: 64px 20px; color: var(--text3); font-size: 14px; }
+
+    .insight-shell {
+      flex-shrink: 0;
+      background: linear-gradient(180deg, #111115 0%, #0a0a0b 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px 14px;
+      display: grid;
+      grid-template-columns: minmax(200px, 1.2fr) minmax(180px, 1fr) minmax(150px, 0.8fr) minmax(180px, 1fr);
+      gap: 10px;
+    }
+    .metric-strip {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(140px, 1fr));
+      gap: 8px;
+    }
+    .metric-tile,
+    .insight-panel {
+      background: rgba(24,24,29,0.84);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .metric-tile { padding: 10px 12px; min-height: 62px; }
+    .metric-tile,
+    .insight-panel,
+    #view-title { cursor: pointer; }
+    .metric-tile:hover,
+    .insight-panel:hover {
+      border-color: rgba(0,102,204,0.65);
+      background: rgba(30,30,37,0.92);
+    }
+    .metric-label,
+    .panel-title {
+      color: var(--text3); font-size: 10px; font-weight: 700;
+      text-transform: uppercase;
+    }
+    .metric-value {
+      margin-top: 4px; color: var(--text); font-size: 20px; font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .metric-note { margin-top: 3px; color: var(--text3); font-size: 11px; }
+    .insight-panel { padding: 12px; min-height: 120px; overflow: hidden; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+    .panel-sub { color: var(--text3); font-size: 11px; }
+    .rank-list { display: flex; flex-direction: column; gap: 6px; }
+    .rank-row {
+      display: grid; grid-template-columns: 48px 1fr 48px 64px;
+      align-items: center; gap: 8px; min-height: 28px;
+      color: var(--text2); font-size: 12px;
+    }
+    .rank-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .rank-meta { color: var(--text3); font-size: 11px; text-align: right; }
+    .sector-bars { display: flex; flex-direction: column; gap: 8px; }
+    .sector-row {
+      display: grid; grid-template-columns: minmax(80px, 1fr) 120px 54px;
+      align-items: center; gap: 9px; font-size: 12px; cursor: pointer;
+    }
+    .sector-name { color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-track { height: 7px; background: #0c0c10; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+    .bar-fill { height: 100%; border-radius: 10px; }
+    .sector-pct { font-family: 'JetBrains Mono', monospace; font-size: 11px; text-align: right; }
+    .scatter-wrap { height: 118px; position: relative; border: 1px solid var(--border); background: #09090d; border-radius: 6px; overflow: hidden; }
+    .scatter-dot {
+      position: absolute; width: 7px; height: 7px; border-radius: 50%;
+      transform: translate(-50%, 50%); opacity: .82; cursor: pointer;
+      box-shadow: 0 0 0 1px rgba(255,255,255,.08);
+    }
+    .scatter-axis { display: flex; justify-content: space-between; color: var(--text3); font-size: 10px; margin-top: 5px; }
+    .table-caption {
+      flex-shrink: 0;
+      height: 34px; padding: 0 24px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      background: var(--bg); border-bottom: 1px solid var(--border);
+      color: var(--text3); font-size: 11px;
+    }
+    .table-caption strong { color: var(--text2); font-weight: 600; }
+    .caption-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .mini-back,
+    .focus-back {
+      background: var(--surface2); color: var(--text2); border: 1px solid var(--border);
+      border-radius: 6px; font-family: inherit; cursor: pointer;
+    }
+    .mini-back { padding: 4px 9px; font-size: 11px; }
+    .focus-back { padding: 7px 12px; font-size: 12px; }
+    .mini-back:hover,
+    .focus-back:hover { background: var(--surface3); color: var(--text); }
+
+    #focus-view {
+      flex: 1;
+      background: var(--bg);
+      padding: 18px 24px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .focus-top {
+      display: flex; align-items: center; gap: 14px;
+      margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+    }
+    .focus-title { color: var(--text); font-size: 20px; font-weight: 750; }
+    .focus-sub { color: var(--text3); font-size: 12px; margin-top: 4px; }
+    .focus-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-bottom: 14px; }
+    .focus-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+    .focus-card .metric-label { margin-bottom: 6px; }
+    .focus-table { width: 100%; border-collapse: collapse; background: #09090d; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .focus-table th {
+      background: var(--surface2); color: var(--text3); font-size: 10px; font-weight: 700;
+      padding: 9px 11px; text-transform: uppercase; text-align: right; border-bottom: 1px solid var(--border);
+    }
+    .focus-table th:first-child,
+    .focus-table td:first-child { text-align: left; }
+    .focus-table td { padding: 10px 11px; color: var(--text2); border-bottom: 1px solid #121218; text-align: right; }
+    .focus-table tr:hover td { background: var(--surface); }
+    .heatmap-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .market-heatmap {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 8px; min-height: 220px;
+    }
+    .market-heatmap.full { min-height: calc(100vh - 260px); grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+
+    /* ── Mini sector heatmap ─────────────────────────────────────────── */
+    .mini-sector-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3px;
+      flex: 1;
+    }
+    .mini-sector-block {
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 5px;
+      padding: 4px 5px;
+      display: flex; flex-direction: column; justify-content: space-between;
+      min-height: 34px;
+      cursor: pointer;
+      transition: filter 0.12s, border-color 0.12s;
+    }
+    .mini-sector-block:hover { filter: brightness(1.2); border-color: rgba(255,255,255,0.22); }
+    .mini-sector-name {
+      font-size: 8px; font-weight: 700; color: rgba(255,255,255,0.72);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .mini-sector-pct {
+      font-size: 9px; font-weight: 700; color: #fff;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .mini-heatmap-hint {
+      font-size: 9px; color: var(--text3); text-align: center;
+      margin-top: 6px; letter-spacing: 0.03em;
+    }
+    .heat-sector {
+      background: #09090d; border: 1px solid var(--border); border-radius: 8px;
+      padding: 8px; display: flex; flex-direction: column; min-height: 135px;
+    }
+    .market-heatmap.full .heat-sector { min-height: 210px; }
+    .heat-sector-head {
+      display: flex; justify-content: space-between; gap: 8px; color: var(--text2);
+      font-size: 11px; font-weight: 700; margin-bottom: 7px;
+    }
+    .heat-sector-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .heat-sector-meta { color: var(--text3); font-weight: 600; white-space: nowrap; }
+    .heat-tiles { display: flex; flex: 1; flex-wrap: wrap; gap: 3px; align-content: stretch; }
+    .stock-tile {
+      flex: 1 1 var(--basis, 72px);
+      min-width: 48px; min-height: 38px;
+      border: 1px solid rgba(255,255,255,0.07); border-radius: 4px;
+      padding: 5px; display: flex; flex-direction: column; justify-content: space-between;
+      overflow: hidden; cursor: pointer;
+    }
+    .market-heatmap.full .stock-tile { min-height: 54px; }
+    .stock-tile:hover { border-color: rgba(255,255,255,0.38); filter: brightness(1.12); }
+    .tile-ticker { color: #fff; font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tile-change { color: #fff; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; }
+    .tile-name { color: rgba(255,255,255,0.68); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empty-focus { color: var(--text3); padding: 36px 0; }
+
+    @media (max-width: 1300px) {
+      .insight-shell { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
+    }
+    @media (max-width: 760px) {
+      .insight-shell { grid-template-columns: 1fr; }
+      .metric-strip { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+    }
+    @media (max-width: 720px) {
+      #site-header { padding: 0 14px; gap: 8px; }
+      .logo-sub, .badge-count { display: none; }
+      #top-tabs, #market-bar, #pill-bar, .filters, .insight-shell, #focus-view, .table-caption { padding-left: 14px; padding-right: 14px; }
+      .metric-strip { grid-template-columns: 1fr; }
+    }
+
+    /* ── Loading overlay (first run only) ───────────────────────────── */
+    #overlay {
+      position: fixed; inset: 0; background: rgba(10,10,11,0.96);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 18px; z-index: 100;
+    }
+    .spinner { width: 32px; height: 32px; border: 2px solid var(--border2); border-top-color: var(--accent);
+                border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .load-text { color: var(--text2); font-size: 13px; }
+    .progress-bar { width: 200px; height: 2px; background: var(--border2); border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; }
+    .load-hint { color: var(--text3); font-size: 11.5px; max-width: 320px; text-align: center; line-height: 1.7; }
+
+    /* ── Footer ──────────────────────────────────────────────────────── */
+    footer {
+      flex-shrink: 0;
+      background: var(--surface); border-top: 1px solid var(--border);
+      padding: 0 24px; height: 36px;
+      display: flex; align-items: center; gap: 20px;
+      font-size: 11px; color: var(--text3);
+    }
+    footer a { color: var(--text3); text-decoration: none; }
+    footer a:hover { color: var(--text2); }
+  </style>
+</head>
+<body>
+
+<!-- Top loading progress bar -->
+<div id="top-bar"></div>
+
+<!-- Loading overlay (first run only) -->
+<div class="hidden" id="overlay">
+  <div class="spinner"></div>
+  <div class="load-text" id="load-text">Fetching stock data…</div>
+  <div class="progress-bar"><div class="progress-fill" id="prog-fill" style="width:0%"></div></div>
+  <div class="load-hint" id="load-hint">
+    First run fetches live data for all ~823 TASE stocks. Takes about 1–2 minutes.
+  </div>
+</div>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header id="site-header">
+  <a class="logo" href="/">
+    <div class="logo-mark">TA</div>
+    <span class="logo-text">TASE Screener</span>
+    <span class="logo-sub">Tel Aviv Stock Exchange</span>
+  </a>
+  <span class="badge badge-loading" id="status-badge">Loading…</span>
+  <span class="badge badge-count"   id="count-badge"></span>
+  <span class="badge badge-enrich hidden" id="enrich-badge">Enriching…</span>
+  <div class="spacer"></div>
+  <!-- Density toggle -->
+  <div class="density-btns" title="Row density">
+    <button class="dbtn" data-density="32" onclick="setDensity(32)">&#9552;</button>
+    <button class="dbtn active" data-density="44" onclick="setDensity(44)">&#8801;</button>
+    <button class="dbtn" data-density="56" onclick="setDensity(56)">&#8800;</button>
+  </div>
+  <!-- Currency toggle -->
+  <div class="density-btns" title="Currency">
+    <button class="dbtn active" id="btn-ils" onclick="setCurrency('ILS')">ILS</button>
+    <button class="dbtn"        id="btn-usd" onclick="setCurrency('USD')">USD</button>
+  </div>
+  <button class="hdr-btn" id="btn-cols" onclick="toggleColsPanel()">&#9776; Columns</button>
+  <button class="hdr-btn" id="btn-refresh" onclick="forceRefresh()">&#x21BB; Refresh</button>
+</header>
+
+<nav id="top-tabs" aria-label="Main views">
+  <button class="top-tab active" data-view="home" onclick="openHomeView()">Home</button>
+  <button class="top-tab" data-view="screener" onclick="openScreenerView()">Stock List</button>
+  <button class="top-tab" data-view="heatmap" onclick="openFocusView('heatmap')">Heatmap</button>
+  <button class="top-tab" data-view="shortlist" onclick="openFocusView('shortlist')">Shortlist</button>
+  <button class="top-tab" data-view="sectors" onclick="openFocusView('sectors')">Sectors</button>
+  <button class="top-tab" data-view="valuation" onclick="openFocusView('valuation')">Value</button>
+  <button class="top-tab" data-view="quality" onclick="openFocusView('quality')">Quality</button>
+  <button class="top-tab" data-view="breadth" onclick="openFocusView('breadth')">Breadth</button>
+</nav>
+
+<!-- ── Market bar ───────────────────────────────────────────────────────── -->
+<div id="market-bar">
+  <div class="mkt-seg">
+    <span class="mkt-lbl">TA-35</span>
+    <span class="mkt-price" id="mkt-ta35">—</span>
+    <span id="mkt-ta35-chg"></span>
+  </div>
+  <div class="mkt-seg">
+    <span class="mkt-lbl">TA-125</span>
+    <span class="mkt-price" id="mkt-ta125">—</span>
+    <span id="mkt-ta125-chg"></span>
+  </div>
+  <div class="mkt-seg">
+    <span class="mkt-lbl">Volume</span>
+    <span class="mkt-price" id="mkt-vol">—</span>
+  </div>
+  <div class="mkt-seg">
+    <span class="mkt-lbl">Breadth</span>
+    <span id="mkt-adv" class="mkt-up">—</span>
+    <span style="color:var(--text3);font-size:11px"> up &nbsp;</span>
+    <span id="mkt-dec" class="mkt-down">—</span>
+    <span style="color:var(--text3);font-size:11px"> dn</span>
+  </div>
+  <div class="mkt-seg">
+    <span class="mkt-lbl">IL 10Y</span>
+    <span class="mkt-price" id="mkt-il10y">—</span>
+    <span style="color:var(--text3);font-size:10px">%</span>
+  </div>
+</div>
+
+<!-- ── Filter pills ─────────────────────────────────────────────────────── -->
+<main id="content-scroll">
+
+<div id="pill-bar">
+  <button class="pill active" data-preset="">All</button>
+  <button class="pill" data-preset="largecap">Large Cap</button>
+  <button class="pill" data-preset="value">Value</button>
+  <button class="pill" data-preset="growth">Growth</button>
+  <button class="pill" data-preset="dividend">Dividend</button>
+  <button class="pill" data-preset="momentum">Momentum</button>
+  <button class="pill" data-preset="recentipo">Recent IPOs</button>
+  <div class="pill-sep"></div>
+  <button class="pill" data-preset="quality">Quality</button>
+  <button class="pill" data-preset="profitability">Profitable</button>
+</div>
+
+<!-- ── Column visibility panel ──────────────────────────────────────────── -->
+<div class="hidden" id="cols-panel">
+  <div class="cols-title">Toggle Columns</div>
+  <div class="cols-actions">
+    <button onclick="resetColDefaults()">Reset</button>
+    <button onclick="setAllCols(true)">All</button>
+    <button onclick="setAllCols(false)">Defaults</button>
+  </div>
+  <div class="cols-grid" id="cols-grid"></div>
+</div>
+
+<!-- ── Advanced filters ──────────────────────────────────────────────────── -->
+<div class="filters">
+  <div class="fg">
+    <label>Search</label>
+    <input type="text" id="f-search" placeholder="Ticker, name, sector…" oninput="applyFilters()">
+  </div>
+  <div class="f-sep"></div>
+  <div class="fg"><label>P/E &lt;</label>
+    <input type="number" id="f-pe-max"   placeholder="e.g. 25" min="0" oninput="onFI()"></div>
+  <div class="fg"><label>P/S &lt;</label>
+    <input type="number" id="f-ps-max"   placeholder="e.g. 3"  min="0" step="0.1" oninput="onFI()"></div>
+  <div class="fg"><label>MCap &gt; (M)</label>
+    <input type="number" id="f-mcap-min" placeholder="500" min="0" oninput="onFI()"></div>
+  <div class="fg"><label>Div &gt; %</label>
+    <input type="number" id="f-div-min"  placeholder="3" min="0" step="0.1" oninput="onFI()"></div>
+  <div class="fg"><label>Chg &gt; %</label>
+    <input type="number" id="f-chg-min"  placeholder="-5" oninput="onFI()"></div>
+  <div class="fg"><label>ROE &gt; %</label>
+    <input type="number" id="f-roe-min"  placeholder="10" oninput="onFI()"></div>
+  <div class="fg"><label>Rev &gt; %</label>
+    <input type="number" id="f-revg-min" placeholder="10" oninput="onFI()"></div>
+  <div class="fg"><label>D/E &lt;</label>
+    <input type="number" id="f-de-max"   placeholder="1" min="0" step="0.1" oninput="onFI()"></div>
+  <div class="fg">
+    <label>Analyst</label>
+    <select id="f-rating" onchange="applyFilters()">
+      <option value="">Any</option>
+      <option value="Buy">Buy</option>
+      <option value="Hold">Hold</option>
+      <option value="Sell">Sell</option>
+    </select>
+  </div>
+  <button class="btn-clear" onclick="clearFilters()">&#x2715; Clear</button>
+</div>
+
+<!-- ── Table + heatmap (flex child that scrolls) ─────────────────────────── -->
+<section class="insight-shell" id="insight-shell">
+  <div class="metric-strip">
+    <div class="metric-tile" onclick="openFocusView('market')">
+      <div class="metric-label">Screened Market Cap</div>
+      <div class="metric-value" id="kpi-cap">-</div>
+      <div class="metric-note" id="kpi-cap-note">All listed names</div>
+    </div>
+    <div class="metric-tile" onclick="openFocusView('breadth')">
+      <div class="metric-label">Breadth</div>
+      <div class="metric-value" id="kpi-breadth">-</div>
+      <div class="metric-note" id="kpi-breadth-note">Advancers vs decliners</div>
+    </div>
+    <div class="metric-tile" onclick="openFocusView('valuation')">
+      <div class="metric-label">Median P/E</div>
+      <div class="metric-value" id="kpi-pe">-</div>
+      <div class="metric-note" id="kpi-pe-note">Positive earnings only</div>
+    </div>
+    <div class="metric-tile" onclick="openFocusView('quality')">
+      <div class="metric-label">Median ROE</div>
+      <div class="metric-value" id="kpi-quality">-</div>
+      <div class="metric-note">Profitability pulse</div>
+    </div>
+  </div>
+
+  <div class="insight-panel" onclick="openFocusView('shortlist')">
+    <div class="panel-head">
+      <div class="panel-title">Analyst Shortlist</div>
+      <div class="panel-sub">Composite score</div>
+    </div>
+    <div class="rank-list" id="top-score-list"></div>
+  </div>
+
+  <div class="insight-panel" onclick="openFocusView('sectors')">
+    <div class="panel-head">
+      <div class="panel-title">Sector Leadership</div>
+      <div class="panel-sub">Cap weighted change</div>
+    </div>
+    <div class="sector-bars" id="sector-leaders"></div>
+  </div>
+
+  <div class="insight-panel" onclick="openFocusView('heatmap')" style="display:flex;flex-direction:column;cursor:pointer">
+    <div class="panel-head" style="margin-bottom:7px">
+      <div class="panel-title">Market Heatmap</div>
+      <div class="panel-sub" style="font-size:9px">click to expand</div>
+    </div>
+    <div class="mini-sector-grid" id="mini-sector-grid"></div>
+    <div class="mini-heatmap-hint">1 block = 1 sector · color = daily chg</div>
+  </div>
+
+  <div class="insight-panel" onclick="openFocusView('scatter')">
+    <div class="panel-head">
+      <div class="panel-title">Value vs Quality</div>
+      <div class="panel-sub">EV/EBITDA x ROE</div>
+    </div>
+    <div class="scatter-wrap" id="quality-scatter"></div>
+    <div class="scatter-axis"><span>Cheaper</span><span>Higher ROE</span></div>
+  </div>
+</section>
+
+<div class="table-caption">
+  <div class="caption-left">
+    <button class="mini-back hidden" id="table-back" onclick="openHomeView()">Home</button>
+    <strong id="view-title" onclick="openScreenerView()">All equities</strong>
+  </div>
+  <span id="view-summary">Sorted by market cap</span>
+</div>
+
+<section id="focus-view" class="hidden"></section>
+
+<div class="table-wrap">
+  <!-- Sector heatmap view (shown instead of table) -->
+  <div id="heatmap-view" class="hidden" style="padding:20px 24px 20px">
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px">
+      Sector performance · size = market cap · color = avg daily change
+    </div>
+    <div id="heatmap-grid" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+  </div>
+  <table id="main-table">
+    <thead><tr id="thead-row"></tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<!-- ── Footer ────────────────────────────────────────────────────────────── -->
+</main>
+
+<footer>
+  <span id="footer-ts">—</span>
+  <span>Yahoo Finance · FMP · Finnhub</span>
+  <span>Extended metrics: top 150 stocks · refreshes every 24 h</span>
+  <div class="spacer"></div>
+  <a href="/" >TASE Screener</a>
+</footer>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+// Columns
+// ═══════════════════════════════════════════════════════════════════════
+const COLUMNS = [
+  { id:'ticker',         label:'Ticker',       defaultOn:true,  locked:true },
+  { id:'name',           label:'Company',      defaultOn:true,  locked:true },
+  { id:'price',          label:'Price',        defaultOn:true  },
+  { id:'change_pct',     label:'Chg %',        defaultOn:true  },
+  { id:'market_cap',     label:'Mkt Cap',      defaultOn:true  },
+  { id:'score',          label:'Score',        defaultOn:true  },
+  { id:'pe',             label:'P/E',          defaultOn:true  },
+  { id:'forward_pe',     label:'Fwd P/E',      defaultOn:false },
+  { id:'eps',            label:'EPS',          defaultOn:false },
+  { id:'volume',         label:'Volume',       defaultOn:true  },
+  { id:'week52_high',    label:'52W Hi',       defaultOn:false },
+  { id:'week52_low',     label:'52W Lo',       defaultOn:false },
+  { id:'div_yield',      label:'Div %',        defaultOn:true  },
+  { id:'ps_ratio',       label:'P/S',          defaultOn:false },
+  { id:'pb_ratio',       label:'P/B',          defaultOn:false },
+  { id:'ev_ebitda',      label:'EV/EBITDA',    defaultOn:false },
+  { id:'debt_equity',    label:'D/E',          defaultOn:false },
+  { id:'roe',            label:'ROE %',        defaultOn:true  },
+  { id:'roa',            label:'ROA %',        defaultOn:false },
+  { id:'gross_margin',   label:'Gross Mgn',    defaultOn:false },
+  { id:'op_margin',      label:'Op Mgn',       defaultOn:false },
+  { id:'net_margin',     label:'Net Mgn',      defaultOn:false },
+  { id:'revenue_growth', label:'Rev Grth',     defaultOn:true  },
+  { id:'eps_growth',     label:'EPS Grth',     defaultOn:false },
+  { id:'beta',           label:'Beta',         defaultOn:false },
+  { id:'analyst_rating', label:'Analyst',      defaultOn:true  },
+  { id:'sector',         label:'Sector',       defaultOn:false },
+  { id:'spark',          label:'1M',           defaultOn:true  },
+];
+
+// ═══════════════════════════════════════════════════════════════════════
+// Pill presets
+// ═══════════════════════════════════════════════════════════════════════
+const PILL_PRESETS = {
+  '':            {},
+  'largecap':    { 'f-mcap-min': 5000 },
+  'value':       { 'f-pe-max': 15, 'f-ps-max': 2, 'f-de-max': 1 },
+  'growth':      { 'f-revg-min': 15, 'f-roe-min': 10 },
+  'dividend':    { 'f-div-min': 4 },
+  'momentum':    { 'f-chg-min': 3 },
+  'recentipo':   { '_recentipo': true },
+  'quality':     { 'f-roe-min': 15, 'f-de-max': 0.5 },
+  'profitability':{ 'f-roe-min': 8, 'f-revg-min': 5 },
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// Heatmap thresholds
+// ═══════════════════════════════════════════════════════════════════════
+function heatBg(val, col) {
+  if (val == null) return '';
+  const UP = { roe:[0,5,10,18,30], roa:[0,2,5,8,12], gross_margin:[0,20,35,50,65],
+               op_margin:[0,5,12,20,30], net_margin:[0,3,8,15,22], revenue_growth:[0,3,8,15,25],
+               eps_growth:[0,5,10,20,35] };
+  const DN = { pe:[8,12,20,35,60], ps_ratio:[0.5,1,2,4,8], pb_ratio:[0.5,1,2,3.5,6],
+               ev_ebitda:[5,8,15,25,40], debt_equity:[0,0.3,0.7,1.5,3] };
+  if (UP[col]) {
+    const t = UP[col];
+    if (val < 0)     return 'rgba(239,68,68,0.15)';
+    if (val < t[1])  return '';
+    if (val < t[2])  return 'rgba(34,197,94,0.08)';
+    if (val < t[3])  return 'rgba(34,197,94,0.15)';
+    return 'rgba(34,197,94,0.24)';
+  }
+  if (DN[col]) {
+    const t = DN[col];
+    if (val > t[4])  return 'rgba(239,68,68,0.15)';
+    if (val > t[3])  return 'rgba(239,68,68,0.08)';
+    if (val > t[2])  return '';
+    if (val > t[1])  return 'rgba(34,197,94,0.08)';
+    return 'rgba(34,197,94,0.15)';
+  }
+  return '';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════════════════════════════
+let allStocks    = [];
+let sparklines   = {};
+let sortCol      = 'market_cap';
+let sortAsc      = false;
+let visibleCols  = new Set();
+let pollTimer    = null;
+let activePill   = '';
+let recentIpoFilter = false;
+let currentRows  = [];
+let focusMode    = 'home';
+
+function setActiveTopTab(view) {
+  const mapped = view === 'market' || view === 'scatter' ? 'home' : view;
+  document.querySelectorAll('.top-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.view === mapped);
+  });
+}
+
+function scrollWorkAreaTop() {
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Formatters
+// ═══════════════════════════════════════════════════════════════════════
+const NA = '<span class="na">—</span>';
+
+function fmtP(n) {
+  if (n == null) return NA;
+  if (currency === 'USD') {
+    const v = n / ilsPerUsd;
+    return '$' + v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+  return '₪' + n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+function fmtLarge(n) {
+  if (n == null) return NA;
+  const sym = currency === 'USD' ? '$' : '₪';
+  const v   = currency === 'USD' ? n / ilsPerUsd : n;
+  if (v >= 1e9) return sym + (v/1e9).toFixed(2) + 'B';
+  if (v >= 1e6) return sym + (v/1e6).toFixed(1) + 'M';
+  return sym + v.toLocaleString();
+}
+
+const fmtLargeRaw = n => {
+  if (!n) return '—';
+  if (n >= 1e9) return (n/1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(0) + 'K';
+  return String(n);
+};
+
+const fmtVol = n => {
+  if (!n) return NA;
+  if (n >= 1e6) return (n/1e6).toFixed(2)+'M';
+  if (n >= 1e3) return (n/1e3).toFixed(0)+'K';
+  return String(n);
+};
+
+const fmtNum = (n, dec=2) =>
+  n == null ? NA : n.toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});
+
+const fmtPct = (n, dec=2) => {
+  if (n == null) return NA;
+  const cls = n>0?'pos':n<0?'neg':'zero', sign = n>0?'+':'';
+  return `<span class="${cls}">${sign}${n.toFixed(dec)}%</span>`;
+};
+
+const fmtRating = r => {
+  if (!r) return NA;
+  const cls = r==='Buy'?'rating-buy':r==='Sell'?'rating-sell':'rating-hold';
+  return `<span class="rating-badge ${cls}">${r}</span>`;
+};
+const jsStr = v => String(v ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+const esc = v => String(v ?? '').replace(/[&<>"']/g, ch => ({
+  '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+}[ch]));
+
+function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+
+function calcScore(s) {
+  let score = 50;
+  if (s.roe != null) score += clamp((s.roe - 8) * 1.4, -14, 24);
+  if (s.revenue_growth != null) score += clamp(s.revenue_growth * 0.6, -12, 18);
+  if (s.ev_ebitda != null && s.ev_ebitda > 0) score += clamp((16 - s.ev_ebitda) * 1.2, -16, 18);
+  else if (s.pe != null && s.pe > 0) score += clamp((18 - s.pe) * 0.8, -12, 14);
+  if (s.debt_equity != null) score += clamp((0.9 - s.debt_equity) * 8, -12, 10);
+  if (s.net_margin != null) score += clamp(s.net_margin * 0.35, -8, 12);
+  if (s.change_pct != null) score += clamp(s.change_pct * 0.8, -8, 8);
+  if (!s.market_cap || s.market_cap < 250e6) score -= 5;
+  return Math.round(clamp(score, 0, 100));
+}
+
+function scoreHTML(s) {
+  const sc = calcScore(s);
+  const cls = sc >= 70 ? 'score-high' : sc >= 50 ? 'score-mid' : 'score-low';
+  return `<span class="score-chip ${cls}">${sc}</span>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Sparkline SVG
+// ═══════════════════════════════════════════════════════════════════════
+function sparkSVG(prices, w=80, h=28) {
+  if (!prices || prices.length < 3) return NA;
+  const isPos  = prices[prices.length-1] >= 0;
+  const color  = isPos ? '#22c55e' : '#ef4444';
+  const fillC  = isPos ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)';
+  const min    = Math.min(...prices) - 0.5;
+  const max    = Math.max(...prices) + 0.5;
+  const range  = max - min || 1;
+  const pts    = prices.map((p,i) => {
+    const x = (i/(prices.length-1))*w;
+    const y = h - ((p-min)/range)*(h-4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const close  = pts[pts.length-1].split(',');
+  const fill   = `${pts.join(' ')} ${w},${h} 0,${h}`;
+  return `<svg class="spark-svg" width="${w}" height="${h}">
+    <polygon points="${fill}" fill="${fillC}"/>
+    <polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${close[0]}" cy="${close[1]}" r="2" fill="${color}"/>
+  </svg>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Cell renderer
+// ═══════════════════════════════════════════════════════════════════════
+function renderCell(s, id) {
+  const hm = col => { const bg=heatBg(s[col],col); return bg?`style="background:${bg}"`:''; };
+  switch(id) {
+    case 'ticker':
+      return `<td class="col-ticker"><span class="ticker" onclick="gotoStock('${s.ticker}')">${s.ticker}</span></td>`;
+    case 'name':
+      return `<td class="col-name"><span class="co-name" title="${s.name}">${s.name}</span></td>`;
+    case 'price':          return `<td>${fmtP(s.price)}</td>`;
+    case 'change_pct':     return `<td>${fmtPct(s.change_pct)}</td>`;
+    case 'market_cap':     return `<td>${fmtLarge(s.market_cap)}</td>`;
+    case 'score':          return `<td>${scoreHTML(s)}</td>`;
+    case 'pe':             return `<td ${hm('pe')}>${s.pe!=null?fmtNum(s.pe,1):NA}</td>`;
+    case 'forward_pe':     return `<td>${s.forward_pe!=null?fmtNum(s.forward_pe,1):NA}</td>`;
+    case 'eps':            return `<td>${s.eps!=null?fmtNum(s.eps):NA}</td>`;
+    case 'volume':         return `<td>${fmtVol(s.volume)}</td>`;
+    case 'week52_high':    return `<td>${s.week52_high!=null?fmtP(s.week52_high):NA}</td>`;
+    case 'week52_low':     return `<td>${s.week52_low!=null?fmtP(s.week52_low):NA}</td>`;
+    case 'div_yield':      return `<td>${s.div_yield!=null?fmtNum(s.div_yield)+'%':NA}</td>`;
+    case 'ps_ratio':       return `<td ${hm('ps_ratio')}>${fmtNum(s.ps_ratio,1)}</td>`;
+    case 'pb_ratio':       return `<td ${hm('pb_ratio')}>${fmtNum(s.pb_ratio,1)}</td>`;
+    case 'ev_ebitda':      return `<td ${hm('ev_ebitda')}>${fmtNum(s.ev_ebitda,1)}</td>`;
+    case 'debt_equity':    return `<td ${hm('debt_equity')}>${fmtNum(s.debt_equity,2)}</td>`;
+    case 'roe':            return `<td ${hm('roe')}>${fmtPct(s.roe,1)}</td>`;
+    case 'roa':            return `<td ${hm('roa')}>${fmtPct(s.roa,1)}</td>`;
+    case 'gross_margin':   return `<td ${hm('gross_margin')}>${fmtPct(s.gross_margin,1)}</td>`;
+    case 'op_margin':      return `<td ${hm('op_margin')}>${fmtPct(s.op_margin,1)}</td>`;
+    case 'net_margin':     return `<td ${hm('net_margin')}>${fmtPct(s.net_margin,1)}</td>`;
+    case 'revenue_growth': return `<td ${hm('revenue_growth')}>${fmtPct(s.revenue_growth,1)}</td>`;
+    case 'eps_growth':     return `<td ${hm('eps_growth')}>${fmtPct(s.eps_growth,1)}</td>`;
+    case 'beta':           return `<td>${s.beta!=null?fmtNum(s.beta,2):NA}</td>`;
+    case 'analyst_rating': return `<td class="col-analyst_rating">${fmtRating(s.analyst_rating)}</td>`;
+    case 'sector':
+      return `<td class="col-sector">${s.sector?`<span class="sector-pill">${s.sector}</span>`:NA}</td>`;
+    case 'spark':
+      return `<td class="col-spark">${sparkSVG(sparklines[s.ticker])}</td>`;
+    default: return `<td>${NA}</td>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Header + Table
+// ═══════════════════════════════════════════════════════════════════════
+function renderHeader() {
+  const cols = COLUMNS.filter(c => visibleCols.has(c.id));
+  document.getElementById('thead-row').innerHTML = cols.map(c => {
+    const s = sortCol===c.id;
+    return `<th class="col-${c.id}${s?' sorted':''}" onclick="sortBy('${c.id}')">
+              ${c.label}<span class="arr">${s?(sortAsc?'▲':'▼'):''}</span></th>`;
+  }).join('');
+}
+
+function renderTable(stocks) {
+  const cols  = COLUMNS.filter(c => visibleCols.has(c.id));
+  const tbody = document.getElementById('tbody');
+  if (!stocks.length) {
+    tbody.innerHTML = `<tr><td colspan="${cols.length}"><div class="no-results">No stocks match the current filters.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = stocks.map(s => `<tr>${cols.map(c => renderCell(s,c.id)).join('')}</tr>`).join('');
+}
+
+function renderSkeleton() {
+  const cols = COLUMNS.filter(c => visibleCols.has(c.id));
+  const WW = {ticker:52,name:130,price:70,change_pct:55,market_cap:72,score:42,pe:36,forward_pe:42,
+               eps:50,volume:52,week52_high:62,week52_low:62,div_yield:48,
+               ps_ratio:36,pb_ratio:36,ev_ebitda:52,debt_equity:36,roe:46,roa:46,
+               gross_margin:48,op_margin:44,net_margin:44,revenue_growth:52,
+               eps_growth:50,beta:34,analyst_rating:42,sector:72,spark:64};
+  const row = `<tr>${cols.map(c=>`<td><div class="skel" style="width:${WW[c.id]||56}px;height:11px"></div></td>`).join('')}</tr>`;
+  document.getElementById('tbody').innerHTML = Array(20).fill(row).join('');
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// Density
+// ═══════════════════════════════════════════════════════════════════════
+function setDensity(px) {
+  document.documentElement.style.setProperty('--row-h', px + 'px');
+  document.querySelectorAll('.dbtn').forEach(b => b.classList.toggle('active', +b.dataset.density === px));
+  localStorage.setItem('tase-density', px);
+}
+(function initDensity() {
+  const saved = parseInt(localStorage.getItem('tase-density') || '44');
+  setDensity(saved);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+// Column visibility
+// ═══════════════════════════════════════════════════════════════════════
+function initColPrefs() {
+  try {
+    const s = JSON.parse(localStorage.getItem('tase-cols-v3') || 'null');
+    if (s && Array.isArray(s)) { visibleCols = new Set(s); return; }
+  } catch {}
+  visibleCols = new Set(COLUMNS.filter(c => c.defaultOn).map(c => c.id));
+}
+const saveCP = () => localStorage.setItem('tase-cols-v3', JSON.stringify([...visibleCols]));
+
+function toggleCol(id) {
+  if (COLUMNS.find(c=>c.id===id)?.locked) return;
+  visibleCols.has(id) ? visibleCols.delete(id) : visibleCols.add(id);
+  saveCP(); buildColPanel(); renderHeader(); applyFilters();
+}
+function setAllCols(v) {
+  COLUMNS.forEach(c => { if(v||!c.locked) v?visibleCols.add(c.id):visibleCols.delete(c.id); });
+  saveCP(); buildColPanel(); renderHeader(); applyFilters();
+}
+function resetColDefaults() {
+  visibleCols = new Set(COLUMNS.filter(c=>c.defaultOn).map(c=>c.id));
+  saveCP(); buildColPanel(); renderHeader(); applyFilters();
+}
+function buildColPanel() {
+  document.getElementById('cols-grid').innerHTML = COLUMNS.map(c => {
+    const ch = visibleCols.has(c.id)?'checked':'', lk=c.locked?'locked':'', ds=c.locked?'disabled':'';
+    return `<label class="col-tog ${lk}"><input type="checkbox" ${ch} ${ds} onchange="toggleCol('${c.id}')"> ${c.label}</label>`;
+  }).join('');
+}
+function toggleColsPanel() { document.getElementById('cols-panel').classList.toggle('hidden'); }
+document.addEventListener('click', e => {
+  if (!e.target.closest('#cols-panel') && !e.target.closest('#btn-cols'))
+    document.getElementById('cols-panel').classList.add('hidden');
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// Filter pills
+// ═══════════════════════════════════════════════════════════════════════
+function setPill(preset) {
+  activePill = preset;
+  recentIpoFilter = false;
+
+  // Visual state
+  document.querySelectorAll('.pill').forEach(b => b.classList.toggle('active', b.dataset.preset === preset));
+
+  // Clear filter inputs
+  ['f-pe-max','f-ps-max','f-mcap-min','f-div-min','f-chg-min','f-roe-min','f-revg-min','f-de-max']
+    .forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('f-search').value = '';
+  document.getElementById('f-rating').value = '';
+
+  const cfg = PILL_PRESETS[preset] || {};
+  if (cfg._recentipo) {
+    recentIpoFilter = true;
+  } else {
+    Object.entries(cfg).forEach(([id, val]) => {
+      const el = document.getElementById(id); if (el) el.value = val;
+    });
+  }
+  applyFilters();
+}
+document.querySelectorAll('.pill').forEach(b =>
+  b.addEventListener('click', () => setPill(b.dataset.preset)));
+
+// ═══════════════════════════════════════════════════════════════════════
+// Filtering & Sorting
+// ═══════════════════════════════════════════════════════════════════════
+function onFI() {
+  // Clear pill when user manually edits a filter
+  activePill = '';
+  document.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
+  document.querySelector('.pill[data-preset=""]').classList.add('active');
+  applyFilters();
+}
+
+function applyFilters() {
+  const q      = document.getElementById('f-search').value.toLowerCase();
+  const peMax  = parseFloat(document.getElementById('f-pe-max').value);
+  const psMax  = parseFloat(document.getElementById('f-ps-max').value);
+  const mcapMn = parseFloat(document.getElementById('f-mcap-min').value)*1e6;
+  const divMn  = parseFloat(document.getElementById('f-div-min').value);
+  const chgMn  = parseFloat(document.getElementById('f-chg-min').value);
+  const roeMn  = parseFloat(document.getElementById('f-roe-min').value);
+  const revgMn = parseFloat(document.getElementById('f-revg-min').value);
+  const deMax  = parseFloat(document.getElementById('f-de-max').value);
+  const rating = document.getElementById('f-rating').value;
+
+  const now = new Date();
+  const twoYearsAgo = new Date(now.getFullYear()-2, now.getMonth(), now.getDate()).toISOString().slice(0,10);
+
+  let filtered = allStocks.filter(s => {
+    if (q && !s.ticker.toLowerCase().includes(q) &&
+             !s.name.toLowerCase().includes(q) &&
+             !(s.sector||'').toLowerCase().includes(q)) return false;
+    if (!isNaN(peMax)  && (s.pe==null||s.pe<0||s.pe>peMax))                  return false;
+    if (!isNaN(psMax)  && (s.ps_ratio==null||s.ps_ratio>psMax))               return false;
+    if (!isNaN(mcapMn) && (s.market_cap==null||s.market_cap<mcapMn))          return false;
+    if (!isNaN(divMn)  && (s.div_yield==null||s.div_yield<divMn))             return false;
+    if (!isNaN(chgMn)  && (s.change_pct==null||s.change_pct<chgMn))           return false;
+    if (!isNaN(roeMn)  && (s.roe==null||s.roe<roeMn))                         return false;
+    if (!isNaN(revgMn) && (s.revenue_growth==null||s.revenue_growth<revgMn))  return false;
+    if (!isNaN(deMax)  && (s.debt_equity==null||s.debt_equity>deMax))         return false;
+    if (rating && s.analyst_rating!==rating)                                   return false;
+    if (recentIpoFilter && !(s.ipo_date && s.ipo_date >= twoYearsAgo))        return false;
+    return true;
+  });
+
+  filtered = sortData(filtered);
+  currentRows = filtered;
+  renderTable(filtered);
+  renderDashboard(filtered);
+  if (focusMode !== 'home' && focusMode !== 'screener') renderFocusContent(focusMode);
+  document.getElementById('count-badge').textContent =
+    filtered.length===allStocks.length ? `${allStocks.length} stocks`
+    : `${filtered.length} / ${allStocks.length}`;
+}
+
+function clearFilters() {
+  ['f-search','f-pe-max','f-ps-max','f-mcap-min','f-div-min',
+   'f-chg-min','f-roe-min','f-revg-min','f-de-max'].forEach(id =>
+    document.getElementById(id).value='');
+  document.getElementById('f-rating').value='';
+  setPill('');
+}
+
+function sortData(data) {
+  return [...data].sort((a,b) => {
+    let va=sortValue(a, sortCol), vb=sortValue(b, sortCol);
+    if(va==null&&vb==null) return 0;
+    if(va==null) return 1; if(vb==null) return -1;
+    if(typeof va==='string') return sortAsc?va.localeCompare(vb):vb.localeCompare(va);
+    return sortAsc?va-vb:vb-va;
+  });
+}
+
+function sortValue(row, col) {
+  if (col === 'score') return calcScore(row);
+  const value = row[col];
+  if (value == null || value === '') return null;
+  if (['price','change_pct','market_cap','pe','forward_pe','eps','volume','week52_high',
+       'week52_low','div_yield','ps_ratio','pb_ratio','ev_ebitda','debt_equity','roe',
+       'roa','gross_margin','op_margin','net_margin','revenue_growth','eps_growth','beta'].includes(col)) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return value;
+}
+
+function sortBy(col) {
+  sortAsc = sortCol===col ? !sortAsc : false;
+  sortCol = col;
+  renderHeader(); applyFilters();
+}
+
+function median(vals) {
+  const a = vals.map(v => Number(v)).filter(v => Number.isFinite(v)).sort((x,y)=>x-y);
+  if (!a.length) return null;
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : (a[m-1] + a[m]) / 2;
+}
+
+function renderDashboard(data) {
+  const rows = data.length ? data : [];
+  const cap = rows.reduce((sum, s) => sum + (s.market_cap || 0), 0);
+  const up = rows.filter(s => (s.change_pct || 0) > 0).length;
+  const down = rows.filter(s => (s.change_pct || 0) < 0).length;
+  const medPe = median(rows.map(s => s.pe).filter(v => v > 0 && v < 500));
+  const medRoe = median(rows.map(s => s.roe).filter(v => v > -100 && v < 100));
+
+  document.getElementById('kpi-cap').textContent = fmtLarge(cap);
+  document.getElementById('kpi-cap-note').textContent = `${rows.length} names in current screen`;
+  document.getElementById('kpi-breadth').innerHTML = `<span class="pos">${up}</span> / <span class="neg">${down}</span>`;
+  document.getElementById('kpi-breadth-note').textContent = `${Math.round((up / Math.max(rows.length,1)) * 100)}% positive`;
+  document.getElementById('kpi-pe').innerHTML = medPe == null ? NA : medPe.toFixed(1) + 'x';
+  document.getElementById('kpi-pe-note').textContent = `${rows.filter(s => s.pe > 0).length} companies with P/E`;
+  document.getElementById('kpi-quality').innerHTML = medRoe == null ? NA : fmtPct(medRoe,1);
+
+  const title = activePill ? document.querySelector(`.pill[data-preset="${activePill}"]`)?.textContent || 'Custom screen' : 'All equities';
+  const sortedLabel = COLUMNS.find(c => c.id === sortCol)?.label || sortCol;
+  document.getElementById('view-title').textContent = title;
+  document.getElementById('view-summary').textContent = `${rows.length} rows, sorted by ${sortedLabel}`;
+
+  renderTopScores(rows);
+  renderSectorLeaders(rows);
+  renderQualityScatter(rows);
+  renderMiniSectorHeatmap(rows);
+}
+
+function renderTopScores(rows) {
+  const top = [...rows]
+    .filter(s => s.market_cap && (s.pe || s.ev_ebitda || s.roe || s.revenue_growth))
+    .sort((a,b) => calcScore(b) - calcScore(a))
+    .slice(0, 5);
+  document.getElementById('top-score-list').innerHTML = top.length ? top.map(s => `
+    <div class="rank-row">
+      <span class="ticker" onclick="event.stopPropagation();gotoStock('${s.ticker}')">${s.ticker}</span>
+      <span class="rank-name" title="${s.name}">${s.name}</span>
+      <span>${scoreHTML(s)}</span>
+      <span class="rank-meta">${s.ev_ebitda ? s.ev_ebitda.toFixed(1)+'x' : (s.pe ? s.pe.toFixed(1)+' P/E' : '')}</span>
+    </div>`).join('') : '<div class="dim">No scored companies in this screen.</div>';
+}
+
+function renderSectorLeaders(rows) {
+  const sectors = {};
+  for (const s of rows) {
+    const sec = s.sector || 'Unknown';
+    if (!sectors[sec]) sectors[sec] = { cap: 0, weighted: 0, count: 0 };
+    const cap = s.market_cap || 0;
+    sectors[sec].cap += cap;
+    sectors[sec].weighted += cap * (s.change_pct || 0);
+    sectors[sec].count += 1;
+  }
+  const list = Object.entries(sectors).map(([name, v]) => ({
+    name, count: v.count, avg: v.cap ? v.weighted / v.cap : 0, cap: v.cap
+  })).sort((a,b) => b.avg - a.avg).slice(0, 6);
+  const max = Math.max(...list.map(x => Math.abs(x.avg)), 1);
+  document.getElementById('sector-leaders').innerHTML = list.length ? list.map(x => {
+    const cls = x.avg >= 0 ? 'pos' : 'neg';
+    const fill = x.avg >= 0 ? 'var(--green)' : 'var(--red)';
+    const sign = x.avg > 0 ? '+' : '';
+    return `<div class="sector-row" onclick="setPill('');document.getElementById('f-search').value='${jsStr(x.name)}';applyFilters()">
+      <span class="sector-name" title="${x.name}">${x.name}</span>
+      <span class="bar-track"><span class="bar-fill" style="width:${Math.max(8, Math.abs(x.avg)/max*100)}%;background:${fill}"></span></span>
+      <span class="sector-pct ${cls}">${sign}${x.avg.toFixed(2)}%</span>
+    </div>`;
+  }).join('') : '<div class="dim">No sector data available.</div>';
+}
+
+function renderQualityScatter(rows) {
+  const points = rows
+    .filter(s => s.ev_ebitda > 0 && s.ev_ebitda < 45 && s.roe != null && s.roe > -20 && s.roe < 60)
+    .slice(0, 120);
+  document.getElementById('quality-scatter').innerHTML = points.map(s => {
+    const x = clamp((45 - s.ev_ebitda) / 45 * 92 + 4, 4, 96);
+    const y = clamp((s.roe + 20) / 80 * 88 + 6, 6, 94);
+    const color = calcScore(s) >= 70 ? 'var(--green)' : calcScore(s) >= 50 ? 'var(--amber)' : 'var(--red)';
+    return `<span class="scatter-dot" title="${s.ticker} | EV/EBITDA ${s.ev_ebitda.toFixed(1)} | ROE ${s.roe.toFixed(1)}%" onclick="gotoStock('${s.ticker}')" style="left:${x}%;bottom:${y}%;background:${color}"></span>`;
+  }).join('');
+}
+
+function renderMiniSectorHeatmap(rows) {
+  const el = document.getElementById('mini-sector-grid');
+  if (!el) return;
+  const groups = sectorGroups(rows).filter(g => g.count > 0).slice(0, 12);
+  if (!groups.length) { el.innerHTML = '<div class="empty-focus" style="font-size:10px">No data</div>'; return; }
+  const words = name => name.replace(/[^A-Za-z\s]/g, '').trim().split(/\s+/);
+  el.innerHTML = groups.map(g => {
+    const intensity = Math.min(Math.abs(g.avg) / 5, 1);
+    const bg = g.avg > 0
+      ? `rgba(34,197,94,${(0.22 + intensity * 0.62).toFixed(2)})`
+      : g.avg < 0 ? `rgba(239,68,68,${(0.22 + intensity * 0.62).toFixed(2)})`
+      : 'rgba(82,82,91,0.32)';
+    const sign = g.avg > 0 ? '+' : '';
+    const w = words(g.name);
+    const abbr = w.length > 1 ? w.map(x => x[0]).join('').slice(0, 4).toUpperCase() : g.name.slice(0, 4).toUpperCase();
+    return `<div class="mini-sector-block" style="background:${bg}" title="${esc(g.name)} · ${sign}${g.avg.toFixed(2)}% · ${g.count} stocks">
+      <div class="mini-sector-name">${esc(abbr)}</div>
+      <div class="mini-sector-pct">${sign}${g.avg.toFixed(1)}%</div>
+    </div>`;
+  }).join('');
+}
+
+function heatColor(pct) {
+  const v = Number(pct) || 0;
+  const intensity = Math.min(Math.abs(v) / 6, 1);
+  if (v > 0) return `rgba(34,197,94,${0.22 + intensity * 0.62})`;
+  if (v < 0) return `rgba(239,68,68,${0.22 + intensity * 0.62})`;
+  return 'rgba(82,82,91,0.35)';
+}
+
+function sectorGroups(rows) {
+  const groups = {};
+  for (const s of rows) {
+    const name = s.sector || 'Unknown';
+    if (!groups[name]) groups[name] = {name, cap: 0, weighted: 0, count: 0, stocks: []};
+    const cap = Number(s.market_cap) || 0;
+    groups[name].cap += cap;
+    groups[name].weighted += cap * (Number(s.change_pct) || 0);
+    groups[name].count += 1;
+    groups[name].stocks.push(s);
+  }
+  return Object.values(groups)
+    .map(g => ({...g, avg: g.cap ? g.weighted / g.cap : 0}))
+    .sort((a,b) => b.cap - a.cap);
+}
+
+function renderMarketHeatmap(rows, targetId, opts={}) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  const compact = !!opts.compact;
+  const groups = sectorGroups(rows).filter(g => g.cap || g.count).slice(0, compact ? 8 : 24);
+  const maxCap = Math.max(...rows.map(s => Number(s.market_cap) || 0), 1);
+  el.classList.toggle('full', !compact);
+
+  if (!groups.length) {
+    el.innerHTML = '<div class="empty-focus">No stocks available for the heatmap.</div>';
+    return;
+  }
+
+  el.innerHTML = groups.map(g => {
+    const stocks = [...g.stocks]
+      .sort((a,b) => (Number(b.market_cap)||0) - (Number(a.market_cap)||0))
+      .slice(0, compact ? 16 : 70);
+    const sign = g.avg > 0 ? '+' : '';
+    const tiles = stocks.map(s => {
+      const cap = Number(s.market_cap) || 0;
+      const basis = clamp(Math.sqrt(cap) / Math.sqrt(maxCap) * (compact ? 160 : 260), compact ? 54 : 68, compact ? 150 : 260);
+      const chg = Number(s.change_pct) || 0;
+      const sg = chg > 0 ? '+' : '';
+      return `<div class="stock-tile" style="--basis:${basis}px;background:${heatColor(chg)}" title="${esc(s.name)} | ${fmtLarge(cap).replace(/<[^>]+>/g,'')} | ${sg}${chg.toFixed(2)}%" onclick="event.stopPropagation();gotoStock('${s.ticker}')">
+        <div class="tile-ticker">${esc(s.ticker)}</div>
+        <div class="tile-name">${esc(s.name)}</div>
+        <div class="tile-change">${sg}${chg.toFixed(2)}%</div>
+      </div>`;
+    }).join('');
+    return `<section class="heat-sector">
+      <div class="heat-sector-head">
+        <span class="heat-sector-name">${esc(g.name)}</span>
+        <span class="heat-sector-meta">${g.count} · ${sign}${g.avg.toFixed(2)}%</span>
+      </div>
+      <div class="heat-tiles">${tiles}</div>
+    </section>`;
+  }).join('');
+}
+
+function focusShell(title, sub, body) {
+  return `<div class="focus-top">
+    <button class="focus-back" onclick="openHomeView()">Home</button>
+    <div>
+      <div class="focus-title">${title}</div>
+      <div class="focus-sub">${sub}</div>
+    </div>
+  </div>${body}`;
+}
+
+function metricCards(items) {
+  return `<div class="focus-grid">${items.map(([label, value, note]) => `
+    <div class="focus-card">
+      <div class="metric-label">${label}</div>
+      <div class="metric-value">${value}</div>
+      ${note ? `<div class="metric-note">${note}</div>` : ''}
+    </div>`).join('')}</div>`;
+}
+
+function focusTable(rows, cols) {
+  if (!rows.length) return '<div class="empty-focus">No companies match this view.</div>';
+  return `<table class="focus-table">
+    <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(s => `<tr>${cols.map(c => `<td>${c.render(s)}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table>`;
+}
+
+const focusCols = {
+  ticker: {label:'Ticker', render:s => `<span class="ticker" onclick="gotoStock('${s.ticker}')">${esc(s.ticker)}</span>`},
+  name: {label:'Company', render:s => esc(s.name)},
+  cap: {label:'Mkt Cap', render:s => fmtLarge(s.market_cap)},
+  chg: {label:'Chg %', render:s => fmtPct(s.change_pct)},
+  score: {label:'Score', render:s => scoreHTML(s)},
+  pe: {label:'P/E', render:s => s.pe != null ? fmtNum(s.pe,1) + 'x' : NA},
+  ev: {label:'EV/EBITDA', render:s => s.ev_ebitda != null ? fmtNum(s.ev_ebitda,1) + 'x' : NA},
+  ps: {label:'P/S', render:s => s.ps_ratio != null ? fmtNum(s.ps_ratio,1) + 'x' : NA},
+  roe: {label:'ROE', render:s => fmtPct(s.roe,1)},
+  rev: {label:'Rev Growth', render:s => fmtPct(s.revenue_growth,1)},
+  debt: {label:'D/E', render:s => s.debt_equity != null ? fmtNum(s.debt_equity,2) : NA},
+  div: {label:'Div %', render:s => s.div_yield != null ? fmtNum(s.div_yield,2) + '%' : NA},
+};
+
+function openHomeView() {
+  focusMode = 'home';
+  setActiveTopTab('home');
+  document.getElementById('insight-shell').classList.remove('hidden');
+  document.getElementById('focus-view').classList.add('hidden');
+  document.querySelector('.table-wrap').classList.remove('hidden');
+  document.querySelector('.table-caption').classList.remove('hidden');
+  document.getElementById('table-back').classList.add('hidden');
+  renderDashboard(currentRows.length ? currentRows : allStocks);
+  scrollWorkAreaTop();
+}
+
+function openScreenerView() {
+  focusMode = 'screener';
+  setActiveTopTab('screener');
+  sortCol = 'market_cap';
+  sortAsc = false;
+  renderHeader();
+  applyFilters();
+  document.getElementById('insight-shell').classList.add('hidden');
+  document.getElementById('focus-view').classList.add('hidden');
+  document.querySelector('.table-wrap').classList.remove('hidden');
+  document.querySelector('.table-caption').classList.remove('hidden');
+  document.getElementById('table-back').classList.remove('hidden');
+  document.getElementById('view-title').textContent = 'All equities';
+  document.getElementById('view-summary').textContent = `${currentRows.length} rows, sorted by market cap`;
+  scrollWorkAreaTop();
+}
+
+function openFocusView(kind) {
+  focusMode = kind;
+  setActiveTopTab(kind);
+  document.getElementById('insight-shell').classList.add('hidden');
+  document.querySelector('.table-wrap').classList.add('hidden');
+  document.querySelector('.table-caption').classList.add('hidden');
+  document.getElementById('focus-view').classList.remove('hidden');
+  renderFocusContent(kind);
+  scrollWorkAreaTop();
+}
+
+function renderFocusContent(kind) {
+  const rows = currentRows.length ? currentRows : allStocks;
+  const focus = document.getElementById('focus-view');
+  const cap = rows.reduce((a,s) => a + (Number(s.market_cap) || 0), 0);
+  const medPe = median(rows.map(s => s.pe).filter(v => v > 0 && v < 500));
+  const medRoe = median(rows.map(s => s.roe).filter(v => v > -100 && v < 100));
+  const up = rows.filter(s => (s.change_pct || 0) > 0).length;
+  const down = rows.filter(s => (s.change_pct || 0) < 0).length;
+
+  if (kind === 'market') {
+    const top = [...rows].sort((a,b) => (Number(b.market_cap)||0) - (Number(a.market_cap)||0)).slice(0, 80);
+    focus.innerHTML = focusShell('Screened Market Cap', 'Largest TASE companies in the current screen',
+      metricCards([
+        ['Total cap', fmtLarge(cap), `${rows.length} companies`],
+        ['Largest company', top[0] ? esc(top[0].ticker) : NA, top[0] ? esc(top[0].name) : ''],
+        ['Median P/E', medPe == null ? NA : medPe.toFixed(1) + 'x', 'Positive earnings only'],
+        ['Median ROE', medRoe == null ? NA : fmtPct(medRoe,1), 'Profitability pulse'],
+      ]) + focusTable(top, [focusCols.ticker, focusCols.name, focusCols.cap, focusCols.chg, focusCols.pe, focusCols.roe]));
+    return;
+  }
+
+  if (kind === 'breadth') {
+    const gainers = [...rows].filter(s => s.change_pct != null).sort((a,b) => b.change_pct - a.change_pct).slice(0, 35);
+    const losers = [...rows].filter(s => s.change_pct != null).sort((a,b) => a.change_pct - b.change_pct).slice(0, 35);
+    focus.innerHTML = focusShell('Market Breadth', 'Advancers, decliners, and strongest daily moves',
+      metricCards([
+        ['Advancers', `<span class="pos">${up}</span>`, `${Math.round(up / Math.max(rows.length,1) * 100)}% positive`],
+        ['Decliners', `<span class="neg">${down}</span>`, `${Math.round(down / Math.max(rows.length,1) * 100)}% negative`],
+        ['Unchanged', rows.length - up - down, 'Flat or missing change'],
+        ['Total rows', rows.length, 'Current screen'],
+      ]) + `<div class="focus-grid" style="grid-template-columns:1fr 1fr">
+        <div>${focusTable(gainers, [focusCols.ticker, focusCols.name, focusCols.chg, focusCols.cap])}</div>
+        <div>${focusTable(losers, [focusCols.ticker, focusCols.name, focusCols.chg, focusCols.cap])}</div>
+      </div>`);
+    return;
+  }
+
+  if (kind === 'valuation') {
+    const cheap = [...rows]
+      .filter(s => (s.pe > 0 || s.ev_ebitda > 0) && (s.market_cap || 0) > 100e6)
+      .sort((a,b) => (a.ev_ebitda || a.pe || 999) - (b.ev_ebitda || b.pe || 999))
+      .slice(0, 80);
+    focus.innerHTML = focusShell('Valuation', 'Low multiple names with enough size to matter',
+      metricCards([
+        ['Median P/E', medPe == null ? NA : medPe.toFixed(1) + 'x', `${rows.filter(s => s.pe > 0).length} companies with P/E`],
+        ['Median EV/EBITDA', (() => { const m = median(rows.map(s => s.ev_ebitda).filter(v => v > 0 && v < 100)); return m == null ? NA : m.toFixed(1) + 'x'; })(), 'Positive EV/EBITDA only'],
+        ['Dividend names', rows.filter(s => s.div_yield > 0).length, 'Any dividend yield'],
+        ['Sub 10x P/E', rows.filter(s => s.pe > 0 && s.pe < 10).length, 'Potential value bucket'],
+      ]) + focusTable(cheap, [focusCols.ticker, focusCols.name, focusCols.cap, focusCols.ev, focusCols.pe, focusCols.ps, focusCols.div]));
+    return;
+  }
+
+  if (kind === 'quality') {
+    const quality = [...rows]
+      .filter(s => s.roe != null || s.net_margin != null || s.revenue_growth != null)
+      .sort((a,b) => calcScore(b) - calcScore(a))
+      .slice(0, 80);
+    focus.innerHTML = focusShell('Quality', 'Profitability, growth, and balance-sheet strength',
+      metricCards([
+        ['Median ROE', medRoe == null ? NA : fmtPct(medRoe,1), 'Current screen'],
+        ['ROE above 15%', rows.filter(s => s.roe >= 15).length, 'High-return companies'],
+        ['D/E below 0.7', rows.filter(s => s.debt_equity != null && s.debt_equity <= .7).length, 'Cleaner balance sheets'],
+        ['Revenue growth above 10%', rows.filter(s => s.revenue_growth >= 10).length, 'Growth bucket'],
+      ]) + focusTable(quality, [focusCols.ticker, focusCols.name, focusCols.score, focusCols.roe, focusCols.rev, focusCols.debt, focusCols.cap]));
+    return;
+  }
+
+  if (kind === 'shortlist') {
+    const top = [...rows].sort((a,b) => calcScore(b) - calcScore(a)).slice(0, 100);
+    focus.innerHTML = focusShell('Analyst Shortlist', 'Composite score combining value, quality, growth, leverage, margin, and momentum',
+      focusTable(top, [focusCols.ticker, focusCols.name, focusCols.score, focusCols.cap, focusCols.ev, focusCols.pe, focusCols.roe, focusCols.rev]));
+    return;
+  }
+
+  if (kind === 'sectors') {
+    const groups = sectorGroups(rows);
+    const sectorRows = groups.map(g => ({
+      ticker: g.name, name: `${g.count} stocks`, market_cap: g.cap, change_pct: g.avg,
+      pe: median(g.stocks.map(s => s.pe).filter(v => v > 0 && v < 500)),
+      roe: median(g.stocks.map(s => s.roe).filter(v => v > -100 && v < 100)),
+    }));
+    focus.innerHTML = focusShell('Sector Leadership', 'Cap-weighted sector performance and valuation',
+      focusTable(sectorRows, [
+        {label:'Sector', render:s => esc(s.ticker)},
+        {label:'Coverage', render:s => esc(s.name)},
+        focusCols.cap, focusCols.chg, focusCols.pe, focusCols.roe
+      ]));
+    return;
+  }
+
+  if (kind === 'scatter') {
+    const points = rows.filter(s => s.ev_ebitda > 0 && s.ev_ebitda < 45 && s.roe != null && s.roe > -20 && s.roe < 60);
+    const dots = points.map(s => {
+      const x = clamp((45 - s.ev_ebitda) / 45 * 92 + 4, 4, 96);
+      const y = clamp((s.roe + 20) / 80 * 88 + 6, 6, 94);
+      const color = calcScore(s) >= 70 ? 'var(--green)' : calcScore(s) >= 50 ? 'var(--amber)' : 'var(--red)';
+      return `<span class="scatter-dot" title="${esc(s.ticker)} | EV/EBITDA ${s.ev_ebitda.toFixed(1)} | ROE ${s.roe.toFixed(1)}%" onclick="gotoStock('${s.ticker}')" style="left:${x}%;bottom:${y}%;background:${color}"></span>`;
+    }).join('');
+    focus.innerHTML = focusShell('Value vs Quality', 'Cheaper companies plot to the right; higher ROE plots upward',
+      `<div class="scatter-wrap" style="height:430px">${dots}</div><div class="scatter-axis"><span>Expensive / lower quality</span><span>Cheap / higher ROE</span></div>`);
+    return;
+  }
+
+  if (kind === 'heatmap') {
+    focus.innerHTML = focusShell('Market Heatmap', 'Grouped by sector. Tile size = market cap, color = daily price change',
+      '<div id="full-heatmap" class="market-heatmap full"></div>');
+    renderMarketHeatmap(rows, 'full-heatmap', {compact: false});
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Market bar
+// ═══════════════════════════════════════════════════════════════════════
+async function loadMarketBar() {
+  try {
+    const d = await (await fetch('/api/market')).json();
+    if (d.error) return;
+    const mk = (obj, idP, idC) => {
+      if (!obj?.price) return;
+      document.getElementById(idP).textContent = obj.price.toLocaleString('en-US',{maximumFractionDigits:2});
+      const el = document.getElementById(idC);
+      if (obj.change_pct != null) {
+        const s = obj.change_pct>0?'+':'';
+        el.className = 'mkt-chg ' + (obj.change_pct>0?'mkt-up':obj.change_pct<0?'mkt-down':'');
+        el.textContent = `${s}${obj.change_pct.toFixed(2)}%`;
+      }
+    };
+    mk(d.ta35,  'mkt-ta35',  'mkt-ta35-chg');
+    mk(d.ta125, 'mkt-ta125', 'mkt-ta125-chg');
+    if (d.vol_total) document.getElementById('mkt-vol').textContent = fmtLargeRaw(d.vol_total);
+    document.getElementById('mkt-adv').textContent = d.advancing ?? '—';
+    document.getElementById('mkt-dec').textContent = d.declining ?? '—';
+    if (d.il10y) document.getElementById('mkt-il10y').textContent = d.il10y.toFixed(2);
+  } catch {}
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Sparklines
+// ═══════════════════════════════════════════════════════════════════════
+async function loadSparklines() {
+  try {
+    const d = await (await fetch('/api/sparklines')).json();
+    if (d.error) return;
+    sparklines = d;
+    if (visibleCols.has('spark') && allStocks.length) applyFilters();
+  } catch {}
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Top loading bar helpers
+// ═══════════════════════════════════════════════════════════════════════
+let _barTimer = null;
+function showBar(pct) {
+  const bar = document.getElementById('top-bar');
+  bar.classList.add('active');
+  bar.style.transform = `scaleX(${pct/100})`;
+}
+function hideBar() {
+  const bar = document.getElementById('top-bar');
+  bar.style.transform = 'scaleX(1)';
+  setTimeout(() => { bar.classList.remove('active'); bar.style.transform='scaleX(0)'; }, 400);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Status helpers
+// ═══════════════════════════════════════════════════════════════════════
+function setStatus(text, type) {
+  const b = document.getElementById('status-badge');
+  b.textContent = text; b.className = 'badge badge-'+type;
+}
+function setFooter(ts, count) {
+  const d = ts ? new Date(ts*1000) : new Date();
+  document.getElementById('footer-ts').textContent = `Updated ${d.toLocaleString()} · ${count} stocks`;
+}
+function setEnrichBadge(on) { document.getElementById('enrich-badge').classList.toggle('hidden',!on); }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Polling
+// ═══════════════════════════════════════════════════════════════════════
+function startPoll(onDone) {
+  if (pollTimer) return;
+  let pct = 10;
+  pollTimer = setInterval(async () => {
+    try {
+      const d = await (await fetch('/api/status')).json();
+      if (d.progress?.total > 0) {
+        pct = Math.round(d.progress.done / d.progress.total * 90) + 5;
+      } else {
+        pct = Math.min(pct + 5, 85);
+      }
+      showBar(pct);
+      if (!d.fetching && d.stock_count > 0) {
+        clearInterval(pollTimer); pollTimer = null;
+        hideBar();
+        onDone();
+      }
+    } catch {}
+  }, 1000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Data loading
+// ═══════════════════════════════════════════════════════════════════════
+async function loadData(showOverlay=false) {
+  if (showOverlay) {
+    document.getElementById('overlay').classList.remove('hidden');
+    document.getElementById('load-text').textContent = 'Fetching stock data…';
+    document.getElementById('prog-fill').style.width = '0%';
+  }
+
+  let d;
+  try { d = await (await fetch('/api/stocks')).json(); } catch { return; }
+
+  if (d.first_run || (d.fetching && !d.data.length)) {
+    document.getElementById('overlay').classList.remove('hidden');
+    document.getElementById('load-hint').style.display = '';
+    setStatus('Fetching live data…','loading');
+    showBar(10);
+    startPoll(() => loadData(false));
+    return;
+  }
+
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('load-hint').style.display = 'none';
+  allStocks = d.data;
+  setEnrichBadge(d.enriching || false);
+
+  if (d.stale && d.fetching) {
+    setStatus(`Stale (${Math.round(d.cache_age/60)}m) · Refreshing…`,'loading');
+    showBar(40);
+    startPoll(() => loadData(false));
+  } else if (d.cached) {
+    setStatus(`Cached · ${Math.round(d.cache_age/60)}m ago`,'cached');
+    hideBar();
+  } else {
+    setStatus('Live','live');
+    hideBar();
+  }
+
+  setFooter(d.timestamp, allStocks.length);
+  sortCol = 'market_cap';
+  sortAsc = false;
+  renderHeader();
+  applyFilters();
+  loadMarketBar();
+  loadSparklines();
+}
+
+async function forceRefresh() {
+  const btn = document.getElementById('btn-refresh');
+  btn.disabled = true; btn.textContent = 'Refreshing…';
+  setStatus('Refreshing…','loading');
+  showBar(5);
+  await fetch('/api/refresh',{method:'POST'});
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  startPoll(async () => {
+    btn.disabled=false; btn.textContent='↻ Refresh';
+    await loadData(false);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Navigation to stock detail page
+// ═══════════════════════════════════════════════════════════════════════
+function gotoStock(ticker) {
+  window.location.href = `/stock/${ticker}`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Currency toggle (ILS ↔ USD)
+// ═══════════════════════════════════════════════════════════════════════
+let currency = 'ILS';
+let ilsPerUsd = 3.65;  // fallback; updated from /api/fx
+
+async function loadFX() {
+  try {
+    const d = await (await fetch('/api/fx')).json();
+    if (d.ils_per_usd) ilsPerUsd = d.ils_per_usd;
+  } catch {}
+}
+
+function setCurrency(cur) {
+  currency = cur;
+  document.getElementById('btn-ils').classList.toggle('active', cur === 'ILS');
+  document.getElementById('btn-usd').classList.toggle('active', cur === 'USD');
+  applyFilters();   // re-render with converted values
+}
+
+// Override fmtP and fmtLarge to be currency-aware
+const _fmtPBase = fmtP;
+// We redefine these after init so they close over ilsPerUsd / currency
+
+// ═══════════════════════════════════════════════════════════════════════
+// Sector heatmap
+// ═══════════════════════════════════════════════════════════════════════
+let heatmapVisible = false;
+
+function toggleHeatmap() {
+  heatmapVisible = !heatmapVisible;
+  document.getElementById('heatmap-view').classList.toggle('hidden', !heatmapVisible);
+  document.getElementById('main-table').classList.toggle('hidden', heatmapVisible);
+  document.getElementById('btn-heatmap').style.color = heatmapVisible ? 'var(--accent)' : '';
+  if (heatmapVisible && allStocks.length) renderHeatmap();
+}
+
+function renderHeatmap() {
+  const sectors = {};
+  for (const s of allStocks) {
+    const sec = s.sector || 'Unknown';
+    if (!sectors[sec]) sectors[sec] = { stocks: [], totalCap: 0, sumChg: 0, count: 0 };
+    sectors[sec].stocks.push(s);
+    sectors[sec].totalCap += s.market_cap || 0;
+    if (s.change_pct != null) { sectors[sec].sumChg += s.change_pct; sectors[sec].count++; }
+  }
+
+  const totalCap = Object.values(sectors).reduce((a, b) => a + b.totalCap, 0) || 1;
+  const MAX_PCT = 700;
+
+  const cells = Object.entries(sectors)
+    .sort((a, b) => b[1].totalCap - a[1].totalCap)
+    .map(([name, data]) => {
+      const avgChg = data.count ? data.sumChg / data.count : 0;
+      const sizePct = Math.max(8, Math.min((data.totalCap / totalCap) * MAX_PCT, 240));
+      const intensity = Math.min(Math.abs(avgChg) / 3, 1);
+      const bg = avgChg > 0
+        ? `rgba(34,197,94,${0.1 + intensity * 0.35})`
+        : avgChg < 0 ? `rgba(239,68,68,${0.1 + intensity * 0.35})`
+        : 'var(--surface2)';
+      const chgColor = avgChg > 0 ? 'var(--green)' : avgChg < 0 ? 'var(--red)' : 'var(--text3)';
+      const sign = avgChg > 0 ? '+' : '';
+      return `<div onclick="setPill('');document.getElementById('f-search').value='${name}';applyFilters()"
+        style="background:${bg};border:1px solid var(--border2);border-radius:8px;
+               padding:10px 14px;min-width:${sizePct}px;cursor:pointer;transition:all .15s"
+        onmouseover="this.style.border='1px solid var(--accent)'"
+        onmouseout="this.style.border='1px solid var(--border2)'">
+        <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:3px">${name}</div>
+        <div style="font-size:18px;font-weight:700;color:${chgColor}">${sign}${avgChg.toFixed(2)}%</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:2px">${data.stocks.length} stocks</div>
+      </div>`;
+    });
+
+  document.getElementById('heatmap-grid').innerHTML = cells.join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Keyboard navigation: / search, j/k row navigation, Enter open, Esc clear
+// ═══════════════════════════════════════════════════════════════════════
+let selectedRowIdx = -1;
+
+function highlightRow(idx) {
+  const rows = document.querySelectorAll('#tbody tr');
+  rows.forEach(r => r.style.outline = '');
+  selectedRowIdx = Math.max(0, Math.min(idx, rows.length - 1));
+  if (rows[selectedRowIdx]) {
+    rows[selectedRowIdx].style.outline = '1px solid var(--accent)';
+    rows[selectedRowIdx].scrollIntoView({ block: 'nearest' });
+  }
+}
+
+document.addEventListener('keydown', e => {
+  const active = document.activeElement.tagName;
+  const inInput = ['INPUT','SELECT','TEXTAREA'].includes(active);
+
+  if (e.key === '/' && !inInput) {
+    e.preventDefault();
+    document.getElementById('f-search').focus();
+    return;
+  }
+  if (e.key === 'Escape' && !inInput) {
+    clearFilters(); return;
+  }
+  if ((e.key === 'j' || e.key === 'ArrowDown') && !inInput) {
+    e.preventDefault();
+    highlightRow(selectedRowIdx + 1); return;
+  }
+  if ((e.key === 'k' || e.key === 'ArrowUp') && !inInput) {
+    e.preventDefault();
+    highlightRow(selectedRowIdx - 1); return;
+  }
+  if (e.key === 'Enter' && !inInput && selectedRowIdx >= 0) {
+    const rows = document.querySelectorAll('#tbody tr');
+    const tickerEl = rows[selectedRowIdx]?.querySelector('.ticker');
+    if (tickerEl) gotoStock(tickerEl.textContent.trim());
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// Init
+// ═══════════════════════════════════════════════════════════════════════
+initColPrefs();
+buildColPanel();
+renderHeader();
+renderSkeleton();
+loadFX();
+loadData(false);
+setInterval(() => loadData(false), 30*60*1000);
+setInterval(loadMarketBar, 5*60*1000);
+</script>
+</body>
+</html>
