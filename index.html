@@ -1629,6 +1629,18 @@ function startPoll(onDone) {
         clearInterval(pollTimer); pollTimer = null;
         hideBar();
         onDone();
+      } else if (!d.fetching && d.error) {
+        clearInterval(pollTimer); pollTimer = null;
+        hideBar();
+        document.getElementById('load-text').textContent = 'Failed to fetch data';
+        document.getElementById('load-hint').textContent = `Error: ${d.error}`;
+        document.getElementById('load-hint').style.display = '';
+        document.getElementById('load-hint').style.color = 'var(--red)';
+        const btn = document.createElement('button');
+        btn.textContent = 'Retry';
+        btn.style.cssText = 'margin-top:12px;padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px';
+        btn.onclick = () => { document.getElementById('overlay').querySelector('button')?.remove(); loadData(true); };
+        document.getElementById('overlay').appendChild(btn);
       }
     } catch {}
   }, 1000);

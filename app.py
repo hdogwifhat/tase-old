@@ -181,18 +181,27 @@ def merge_enrichment(stocks):
 
 # ── Background fetch ───────────────────────────────────────────────────────
 
+_fetch_error = None
+
 def start_bg_fetch():
-    global _is_fetching
+    global _is_fetching, _fetch_error
     if _is_fetching:
         return
     _is_fetching = True
+    _fetch_error = None
     def bg():
-        global _is_fetching
+        global _is_fetching, _fetch_error
         try:
             fresh = fetch_all_tase()
-            save_cache(fresh)
-            if _should_enrich():
-                start_enrich_bg(fresh)
+            if fresh:
+                save_cache(fresh)
+                if _should_enrich():
+                    start_enrich_bg(fresh)
+            else:
+                _fetch_error = 'No data returned from Yahoo Finance'
+        except Exception as e:
+            _fetch_error = str(e)
+            print(f'  [Fetch] Error: {e}')
         finally:
             _is_fetching = False
     threading.Thread(target=bg, daemon=True).start()
@@ -411,6 +420,8 @@ def stocks():
     data, ts = load_cache()
     age = time.time() - ts if ts else None
     if data is None:
+        if _fetch_error and not _is_fetching:
+            return jsonify({'data': [], 'fetching': False, 'first_run': True, 'error': _fetch_error})
         start_bg_fetch()
         return jsonify({'data': [], 'fetching': True, 'first_run': True})
     if age and age > CACHE_TTL:
@@ -444,6 +455,7 @@ def status():
         'enriching':   _is_enriching,
         'cache_age':   round(age) if age else None,
         'stock_count': len(data) if data else 0,
+        'error':       _fetch_error,
         'progress':    {'done': 0, 'total': 0},
     })
 
