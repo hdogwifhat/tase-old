@@ -198,6 +198,24 @@ def _compute_missing(ratios, info, fin, bs):
             ratios['pb_ratio'] = _f(price / bvps)
 
 
+def _derive_ipo_date(info):
+    """Best-effort IPO date: FMP ipoExpectedDate → yfinance firstTradeDateMilliseconds."""
+    d = info.get('ipoExpectedDate') or info.get('firstTradeDateIsoString')
+    if d:
+        return str(d)[:10]
+    ms = info.get('firstTradeDateMilliseconds') or info.get('firstTradeDateEpochUtc')
+    if ms:
+        try:
+            from datetime import datetime, timezone
+            ts = float(ms)
+            if ts > 1e10:  # milliseconds
+                ts /= 1000
+            return datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%d')
+        except Exception:
+            pass
+    return None
+
+
 # ── Core fetcher ───────────────────────────────────────────────────────────
 
 def fetch_financials(ticker: str) -> dict:
@@ -296,6 +314,7 @@ def fetch_financials(ticker: str) -> dict:
         'country':     info.get('country'),
         'shares':      info.get('sharesOutstanding'),
         'mkt_cap':     mkt_cap, 'ev': ev,
+        'ipo_date':    _derive_ipo_date(info),
         'fetched_at':  time.time(), 'source': 'yfinance+computed',
     }
 

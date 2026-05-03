@@ -126,26 +126,106 @@ def _parse_fin_df(df):
 
 
 def _fetch_news(bare_ticker):
+    """Finnhub first (better data when available), yfinance fallback for TASE coverage."""
+    news = []
     key = os.getenv('FINNHUB_API_KEY', '')
-    if not key:
-        return []
-    from datetime import datetime, timedelta
-    to_d   = datetime.now().strftime('%Y-%m-%d')
-    from_d = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-    try:
-        r = _req_mod.get('https://finnhub.io/api/v1/company-news',
-                         params={'symbol': bare_ticker, 'from': from_d, 'to': to_d, 'token': key},
-                         timeout=10)
-        if r.status_code == 200:
-            items = r.json()
-            if isinstance(items, list):
-                return [{'headline': i.get('headline', ''), 'source': i.get('source', ''),
-                         'url': i.get('url', ''), 'datetime': i.get('datetime', 0),
-                         'summary': (i.get('summary') or '')[:200]}
-                        for i in items[:10] if i.get('headline')]
-    except Exception:
-        pass
-    return []
+    if key:
+        from datetime import datetime, timedelta
+        to_d   = datetime.now().strftime('%Y-%m-%d')
+        from_d = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+        try:
+            r = _req_mod.get('https://finnhub.io/api/v1/company-news',
+                             params={'symbol': bare_ticker, 'from': from_d, 'to': to_d, 'token': key},
+                             timeout=10)
+            if r.status_code == 200:
+                items = r.json()
+                if isinstance(items, list):
+                    news = [{'headline': i.get('headline', ''), 'source': i.get('source', ''),
+                             'url': i.get('url', ''), 'datetime': i.get('datetime', 0),
+                             'summary': (i.get('summary') or '')[:200]}
+                            for i in items[:10] if i.get('headline')]
+        except Exception:
+            pass
+
+    if not news:
+        try:
+            yf_items = yf.Ticker(bare_ticker + '.TA').news or []
+            news = [{'headline': n.get('title', ''),
+                     'source':   n.get('publisher', ''),
+                     'url':      n.get('link', '') or n.get('url', ''),
+                     'datetime': n.get('providerPublishTime', 0),
+                     'summary':  ''}
+                    for n in yf_items[:10] if n.get('title')]
+        except Exception:
+            pass
+    return news
+
+
+# ── TASE indices ──────────────────────────────────────────────────────────────
+
+_MAIN_INDICES = [
+    {'label': 'TA-35',  'sym': 'TA35.TA'},
+    {'label': 'TA-125', 'sym': 'TA125.TA'},
+    {'label': 'TA-90',  'sym': 'TA90.TA'},
+    {'label': 'SME-60', 'sym': 'MIDCAP50.TA'},
+]
+
+_SECTOR_INDICES = [
+    {'label': 'ביטחוניות', 'sym': None,            'tase_id': 207},
+    {'label': 'טכנולוגיה',  'sym': 'TA-TECH.TA',    'tase_id': None},
+    {'label': 'בנקים',      'sym': 'TA-BANK.TA',    'tase_id': None},
+    {'label': 'נדל"ן',      'sym': 'TA-REALE.TA',   'tase_id': None},
+    {'label': 'ביומד',      'sym': 'TA-BOMED.TA',   'tase_id': None},
+    {'label': 'אנרגיה',     'sym': 'TA-ENRGY.TA',   'tase_id': None},
+]
+
+
+def _fetch_index_quote(sym=None, tase_id=None):
+    """Return {price, change_pct} for a TASE index/ETF."""
+    if sym:
+        try:
+            h = yf.Ticker(sym).history(period='5d', interval='1d')
+            if len(h) >= 2:
+                prev = float(h['Close'].iloc[-2])
+                curr = float(h['Close'].iloc[-1])
+                return {'price': round(curr, 2),
+                        'change_pct': round((curr - prev) / prev * 100, 2)}
+        except Exception:
+            pass
+
+    if tase_id:
+        # TASE public market-data API (used by their own website)
+        for url in [
+            f'https://market.tase.co.il/api/index/{tase_id}/summary',
+            f'https://market.tase.co.il/api/en/index/{tase_id}/major_data',
+        ]:
+            try:
+                r = _req_mod.get(url, timeout=8,
+                                 headers={'Accept': 'application/json',
+                                          'Referer': 'https://market.tase.co.il/'})
+                if r.status_code == 200:
+                    d = r.json()
+                    price  = (d.get('lastPrice') or d.get('price') or
+                              d.get('indexValue') or d.get('closePrice'))
+                    change = (d.get('changePercent') or d.get('percentChange') or
+                              d.get('dailyChangePercent'))
+                    if price:
+                        return {'price': round(float(price), 2),
+                                'change_pct': round(float(change or 0), 2)}
+            except Exception:
+                pass
+
+    return {'price': None, 'change_pct': None}
+
+
+# ── Israeli market news (RSS) ─────────────────────────────────────────────────
+
+_RSS_FEEDS = [
+    ('Bizportal', 'https://www.bizportal.co.il/rss/news'),
+    ('Calcalist', 'https://www.calcalist.co.il/GeneralRSS/0,16335,L-8,00.xml'),
+    ('TheMarker', 'https://www.themarker.com/cmlink/1.744'),
+    ('Funder',    'https://funder.co.il/feed/'),
+]
 
 
 def fetch_stock_detail(ticker):
@@ -347,6 +427,49 @@ def detail(ticker):
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/indices')
+def indices():
+    cached = rget('tase:indices')
+    if cached and cached.get('_ts') and (time.time() - cached['_ts']) < 300:
+        return jsonify({k: v for k, v in cached.items() if k != '_ts'})
+    result = {
+        'main':    [{**idx, **_fetch_index_quote(idx['sym'])} for idx in _MAIN_INDICES],
+        'sectors': [{**idx, **_fetch_index_quote(idx.get('sym'), idx.get('tase_id'))}
+                    for idx in _SECTOR_INDICES],
+    }
+    rset('tase:indices', {**result, '_ts': time.time()}, ttl=300)
+    return jsonify(result)
+
+
+@app.route('/api/news/market')
+def market_news():
+    cached = rget('tase:market_news')
+    if cached and cached.get('_ts') and (time.time() - cached['_ts']) < 900:
+        return jsonify(cached.get('items', []))
+    import xml.etree.ElementTree as ET, re
+    items = []
+    for source, url in _RSS_FEEDS:
+        try:
+            r = _req_mod.get(url, timeout=8, headers={
+                'User-Agent': 'Mozilla/5.0 (compatible; TASEScreener/1.0)'})
+            if r.status_code == 200:
+                root    = ET.fromstring(r.content)
+                channel = root.find('channel')
+                feed_items = channel.findall('item') if channel else root.findall('.//item')
+                for item in feed_items[:6]:
+                    title   = (item.findtext('title') or '').strip()
+                    link    = (item.findtext('link')  or '').strip()
+                    pubdate = (item.findtext('pubDate') or '').strip()
+                    desc    = re.sub(r'<[^>]+>', '', item.findtext('description') or '')[:200].strip()
+                    if title:
+                        items.append({'source': source, 'title': title,
+                                      'url': link, 'date': pubdate, 'summary': desc})
+        except Exception as e:
+            print(f'[News/RSS] {source}: {e}', flush=True)
+    rset('tase:market_news', {'items': items, '_ts': time.time()}, ttl=900)
+    return jsonify(items)
 
 
 @app.route('/api/market')

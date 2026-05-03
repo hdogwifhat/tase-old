@@ -27,6 +27,10 @@
       --red:       #ef4444;
       --red-dim:   #2d0e0e;
       --red-bg:    rgba(239,68,68,0.12);
+      /* Muted fundamentals (terminal-grade; avoid retina fatigue) */
+      --fund-pos:   rgba(74,164,134,0.55);
+      --fund-neg:   rgba(198,118,118,0.55);
+      --fund-flat:  #71717a;
       --amber:     #f59e0b;
       --amber-dim: #2d1f05;
       /* row height — changed by density toggle */
@@ -101,16 +105,216 @@
     }
     #top-tabs::-webkit-scrollbar { display: none; }
     .top-tab {
-      background: transparent; border: 1px solid var(--border2); color: var(--text2);
-      border-radius: 6px; padding: 7px 12px; font-size: 12px; font-weight: 600;
-      font-family: inherit; cursor: pointer; min-height: 31px;
+      background: var(--surface2); border: 1px solid var(--border2); color: var(--text2);
+      border-radius: 8px; padding: 8px 18px; font-size: 13px; font-weight: 600;
+      font-family: inherit; cursor: pointer; min-height: 36px; transition: all 0.15s;
+      letter-spacing: 0.01em;
     }
-    .top-tab:hover { border-color: var(--accent); color: var(--text); background: var(--surface2); }
-    .top-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .top-tab:hover { border-color: var(--accent); color: var(--text); background: var(--surface3); }
+    .top-tab.active { background: var(--accent); color: #fff; border-color: var(--accent);
+                       box-shadow: 0 2px 8px rgba(0,102,204,0.35); }
+
+    /* ── Indices strip ───────────────────────────────────────────────── */
+    #indices-strip {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 24px;
+      display: flex; align-items: stretch; gap: 0;
+      flex-shrink: 0; overflow-x: auto; white-space: nowrap;
+    }
+    #indices-strip::-webkit-scrollbar { display: none; }
+    .idx-main-group { display: flex; gap: 0; align-items: stretch; }
+    .idx-main-card {
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 6px 20px; border-right: 1px solid var(--border2); min-width: 110px;
+      cursor: default;
+    }
+    .idx-main-card:first-child { padding-left: 0; }
+    .idx-label { font-size: 10px; font-weight: 700; color: var(--text3);
+                  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
+    .idx-price { font-size: 16px; font-weight: 700; color: var(--text);
+                  font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+    .idx-chg   { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+                  margin-top: 2px; }
+    .idx-sep   { width: 1px; background: var(--border2); margin: 0 16px; align-self: stretch; }
+    .idx-sector-group { display: flex; gap: 0; align-items: center; flex: 1; }
+    .idx-sector-item {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 4px 14px; border-right: 1px solid var(--border2);
+      font-size: 11px; min-width: 80px; cursor: default;
+    }
+    .idx-sector-name { font-size: 10px; color: var(--text3); font-weight: 600;
+                        margin-bottom: 2px; direction: rtl; }
+    .idx-sector-chg  { font-size: 12px; font-weight: 700;
+                        font-family: 'JetBrains Mono', monospace; }
+    .usd-box {
+      display: flex; flex-direction: column; justify-content: center; align-items: flex-end;
+      padding: 4px 0 4px 16px; margin-left: auto; min-width: 90px;
+    }
+    .usd-lbl { font-size: 9px; color: var(--text3); font-weight: 700;
+                text-transform: uppercase; letter-spacing: 0.06em; }
+    .usd-rate { font-size: 15px; font-weight: 700; color: var(--text);
+                 font-family: 'JetBrains Mono', monospace; }
+    .usd-chg  { font-size: 11px; font-weight: 600; }
+
+    /* ── Market news feed ────────────────────────────────────────────── */
+    #news-feed-section {
+      flex-shrink: 0;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      padding: 20px 24px 28px;
+    }
+    .news-feed-title { font-size: 12px; font-weight: 700; color: var(--text3);
+                        text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+    .news-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 8px; }
+    .news-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px; text-decoration: none;
+      display: block; transition: border-color 0.15s, background 0.15s;
+    }
+    .news-card:hover { border-color: rgba(0,102,204,0.5); background: var(--surface2); }
+    .news-card-source { font-size: 9px; font-weight: 700; color: var(--text3);
+                         text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px; }
+    .news-card-title { font-size: 12.5px; font-weight: 600; color: var(--text);
+                        line-height: 1.45; direction: rtl; text-align: right; }
+    .news-card-date  { font-size: 10px; color: var(--text3); margin-top: 5px; }
+
+    /* ── Gainers / Losers panel ──────────────────────────────────────── */
+    .gl-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .gl-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 0; border-bottom: 1px solid #0f0f14; gap: 6px;
+      font-size: 12px;
+    }
+    .gl-row:last-child { border-bottom: none; }
+    .gl-ticker { font-family: 'JetBrains Mono', monospace; font-weight: 700;
+                  font-size: 12px; color: var(--accent); cursor: pointer; }
+    .gl-ticker:hover { color: #60a5fa; }
+    .gl-name  { color: var(--text2); font-size: 11px; overflow: hidden;
+                 text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .gl-pct   { font-family: 'JetBrains Mono', monospace; font-size: 12px;
+                 font-weight: 700; white-space: nowrap; }
+    .gl-head  { font-size: 10px; font-weight: 700; color: var(--text3);
+                 text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
 
     #content-scroll {
       flex: 1;
       display: flex; flex-direction: column;
+      background: var(--bg);
+      min-width: 0;
+    }
+
+    /* ── Split screener + quick peek ─────────────────────────────────── */
+    #split-work {
+      flex: 1;
+      display: flex;
+      flex-direction: row;
+      min-height: 0;
+      background: var(--bg);
+      position: relative;
+    }
+    #split-screener {
+      flex: 1 1 100%;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      transition: flex 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    body.peek-open #split-screener {
+      flex: 0 0 35%;
+      max-width: 35%;
+      min-width: 0;
+      border-right: 1px solid var(--border2);
+      /* Grid minmax(200px,…) inside needs a hard clip or it bleeds over the peek column */
+      overflow-x: clip;
+      position: relative;
+      z-index: 1;
+    }
+    .peek-panel {
+      flex: 0 0 65%;
+      max-width: 65%;
+      min-width: 0;
+      min-height: 0;
+      background: linear-gradient(180deg, #0c0c10 0%, var(--bg) 320px);
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid var(--border2);
+      position: relative;
+      z-index: 4;
+      isolation: isolate;
+    }
+    .peek-panel.hidden { display: none !important; }
+    /* When peek is open, reflow home dashboard so panels don’t demand ~700px+ min width */
+    body.peek-open .insight-shell {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 8px;
+      padding-left: 10px;
+      padding-right: 10px;
+    }
+    body.peek-open .metric-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+    body.peek-open .insight-panel {
+      min-width: 0;
+      max-width: 100%;
+    }
+    body.peek-open .scatter-wrap {
+      max-width: 100%;
+    }
+    .peek-head {
+      flex-shrink: 0;
+      height: 42px;
+      padding: 0 12px 0 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: rgba(14,14,18,0.96);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(10px);
+    }
+    .peek-head .peek-ticker {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.03em;
+    }
+    .peek-actions { display: flex; align-items: center; gap: 8px; }
+    .peek-expand {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text2);
+      text-decoration: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border2);
+      background: var(--surface2);
+    }
+    .peek-expand:hover {
+      background: var(--surface3);
+      color: var(--text);
+      border-color: rgba(0,102,204,0.65);
+    }
+    .peek-close {
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      border: 1px solid var(--border2);
+      background: transparent;
+      color: var(--text3);
+      cursor: pointer;
+      font-size: 17px;
+      line-height: 1;
+      font-family: inherit;
+    }
+    .peek-close:hover { color: var(--text); background: var(--surface2); border-color: var(--border); }
+    .peek-frame {
+      flex: 1 1 auto;
+      border: none;
+      width: 100%;
+      min-height: 0;
       background: var(--bg);
     }
 
@@ -242,6 +446,10 @@
     .pos  { color: var(--green); }
     .neg  { color: var(--red); }
     .zero { color: var(--text2); }
+    /* Fundamental % / ratios: subdued tints — never billboard green/red */
+    .fund-muted { color: var(--fund-flat); font-variant-numeric: tabular-nums; }
+    .fund-muted-up { color: var(--fund-pos); font-variant-numeric: tabular-nums; }
+    .fund-muted-down { color: var(--fund-neg); font-variant-numeric: tabular-nums; }
     .na   { color: #2a2a35; }
 
 
@@ -378,11 +586,13 @@
     .focus-table td { padding: 10px 11px; color: var(--text2); border-bottom: 1px solid #121218; text-align: right; }
     .focus-table tr:hover td { background: var(--surface); }
     .heatmap-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    /* FinViz-style heatmap — sector width ∝ sector total market cap */
     .market-heatmap {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 8px; min-height: 220px;
+      display: flex; flex-wrap: wrap;
+      gap: 6px; min-height: 220px; align-items: stretch;
     }
-    .market-heatmap.full { min-height: calc(100vh - 260px); grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+    .market-heatmap.full { min-height: calc(100vh - 260px); }
+    /* heat-sector combined rule below */
 
     /* ── Mini sector heatmap ─────────────────────────────────────────── */
     .mini-sector-grid {
@@ -414,29 +624,38 @@
       margin-top: 6px; letter-spacing: 0.03em;
     }
     .heat-sector {
+      flex: 1 1 var(--sector-basis, 220px); min-width: 120px; max-width: 600px;
       background: #09090d; border: 1px solid var(--border); border-radius: 8px;
       padding: 8px; display: flex; flex-direction: column; min-height: 135px;
     }
-    .market-heatmap.full .heat-sector { min-height: 210px; }
+    .market-heatmap.full .heat-sector { min-height: 180px; }
     .heat-sector-head {
       display: flex; justify-content: space-between; gap: 8px; color: var(--text2);
       font-size: 11px; font-weight: 700; margin-bottom: 7px;
     }
     .heat-sector-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .heat-sector-meta { color: var(--text3); font-weight: 600; white-space: nowrap; }
-    .heat-tiles { display: flex; flex: 1; flex-wrap: wrap; gap: 3px; align-content: stretch; }
+    .heat-tiles { display: flex; flex: 1; flex-wrap: wrap; gap: 2px; align-content: flex-start; }
     .stock-tile {
       flex: 1 1 var(--basis, 72px);
-      min-width: 48px; min-height: 38px;
+      min-width: 42px; min-height: 42px;
       border: 1px solid rgba(255,255,255,0.07); border-radius: 4px;
-      padding: 5px; display: flex; flex-direction: column; justify-content: space-between;
-      overflow: hidden; cursor: pointer;
+      padding: 4px 3px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      overflow: hidden; cursor: pointer; gap: 2px;
     }
-    .market-heatmap.full .stock-tile { min-height: 54px; }
-    .stock-tile:hover { border-color: rgba(255,255,255,0.38); filter: brightness(1.12); }
-    .tile-ticker { color: #fff; font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .tile-change { color: #fff; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; }
-    .tile-name { color: rgba(255,255,255,0.68); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .market-heatmap.full .stock-tile { min-height: 56px; }
+    .stock-tile:hover { border-color: rgba(255,255,255,0.45); filter: brightness(1.15); z-index: 1; }
+    .tile-ticker {
+      color: #fff; font-family: 'JetBrains Mono', monospace; font-weight: 800;
+      font-size: 13px; text-align: center; width: 100%;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.1;
+    }
+    .tile-change {
+      color: rgba(255,255,255,0.9); font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; font-weight: 700; text-align: center;
+    }
+    .tile-name { display: none; } /* hidden — ticker is enough */
     .empty-focus { color: var(--text3); padding: 36px 0; }
 
     @media (max-width: 1300px) {
@@ -465,9 +684,6 @@
       thead th { padding: 0 5px; height: 30px; font-size: 9px; }
       .col-ticker { padding-left: 10px !important; }
       thead th.col-ticker { padding-left: 10px; }
-
-      /* Smaller score chip */
-      .score-chip { width: 34px; height: 18px; font-size: 10px; }
 
       /* Truncate sector pill if visible */
       .sector-pill { max-width: 70px; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
@@ -553,6 +769,21 @@
   <button class="top-tab" data-view="quality" onclick="openFocusView('quality')">Quality</button>
   <button class="top-tab" data-view="breadth" onclick="openFocusView('breadth')">Breadth</button>
 </nav>
+
+<div id="split-work">
+<div id="split-screener">
+
+<!-- ── TASE Indices strip ────────────────────────────────────────────────── -->
+<div id="indices-strip">
+  <div class="idx-main-group" id="idx-main"></div>
+  <div class="idx-sep"></div>
+  <div class="idx-sector-group" id="idx-sectors"></div>
+  <div class="usd-box">
+    <div class="usd-lbl">USD/ILS</div>
+    <div class="usd-rate" id="usd-rate">—</div>
+    <div class="usd-chg"  id="usd-chg"></div>
+  </div>
+</div>
 
 <!-- ── Market bar ───────────────────────────────────────────────────────── -->
 <div id="market-bar">
@@ -655,7 +886,7 @@
       <div class="metric-note" id="kpi-cap-note">All listed names</div>
     </div>
     <div class="metric-tile" onclick="openFocusView('breadth')">
-      <div class="metric-label">Breadth</div>
+      <div class="metric-label">Gainers &amp; Losers</div>
       <div class="metric-value" id="kpi-breadth">-</div>
       <div class="metric-note" id="kpi-breadth-note">Advancers vs decliners</div>
     </div>
@@ -671,12 +902,21 @@
     </div>
   </div>
 
-  <div class="insight-panel" onclick="openFocusView('shortlist')">
-    <div class="panel-head">
-      <div class="panel-title">Analyst Shortlist</div>
-      <div class="panel-sub">Composite score</div>
+  <div class="insight-panel" style="cursor:default">
+    <div class="panel-head" style="margin-bottom:8px">
+      <div class="panel-title">Today's Movers</div>
+      <div class="panel-sub">Top 5 gainers &amp; losers</div>
     </div>
-    <div class="rank-list" id="top-score-list"></div>
+    <div class="gl-cols">
+      <div>
+        <div class="gl-head">▲ Gainers</div>
+        <div id="gl-gainers"></div>
+      </div>
+      <div>
+        <div class="gl-head">▼ Losers</div>
+        <div id="gl-losers"></div>
+      </div>
+    </div>
   </div>
 
   <div class="insight-panel" onclick="openFocusView('sectors')">
@@ -730,8 +970,31 @@
   </table>
 </div>
 
+<!-- ── Israeli market news ──────────────────────────────────────────────── -->
+<div id="news-feed-section" class="hidden">
+  <div class="news-feed-title">חדשות שוק ההון</div>
+  <div class="news-grid" id="news-grid">
+    <div style="color:var(--text3);font-size:12px">טוען חדשות…</div>
+  </div>
+</div>
+
 <!-- ── Footer ────────────────────────────────────────────────────────────── -->
 </main>
+
+</div><!-- #split-screener -->
+
+<aside id="peek-panel" class="peek-panel hidden" aria-label="Stock quick peek">
+  <header class="peek-head">
+    <span class="peek-ticker" id="peek-title">—</span>
+    <div class="peek-actions">
+      <a class="peek-expand" id="peek-expand-link" href="#" target="_top">Expand full page →</a>
+      <button type="button" class="peek-close" id="peek-close-btn" onclick="closeStockPeek()" title="Close panel">×</button>
+    </div>
+  </header>
+  <iframe class="peek-frame" id="peek-frame" title="Stock detail preview"></iframe>
+</aside>
+
+</div><!-- #split-work -->
 
 <footer>
   <span id="footer-ts">—</span>
@@ -870,7 +1133,10 @@ const fmtPct = (n, dec=2) => {
 const fmtPctMono = (n, dec=1) => {
   if (n == null) return NA;
   const sign = n > 0 ? '+' : '';
-  return `<span style="color:var(--text2)">${sign}${n.toFixed(dec)}%</span>`;
+  const eps = dec >= 2 ? 0.001 : 0.05;
+  const cls =
+    n > eps ? 'fund-muted-up' : n < -eps ? 'fund-muted-down' : 'fund-muted';
+  return `<span class="${cls}">${sign}${n.toFixed(dec)}%</span>`;
 };
 
 const fmtRating = r => {
@@ -1188,7 +1454,6 @@ function sortData(data) {
 }
 
 function sortValue(row, col) {
-  if (col === 'score') return calcScore(row);
   const value = row[col];
   if (value == null || value === '') return null;
   if (['price','change_pct','market_cap','pe','forward_pe','eps','volume','week52_high',
@@ -1224,24 +1489,25 @@ function renderDashboard(data) {
 
   document.getElementById('kpi-cap').textContent = fmtLarge(cap);
   document.getElementById('kpi-cap-note').textContent = `${rows.length} names in current screen`;
-  document.getElementById('kpi-breadth').innerHTML = `<span class="pos">${up}</span> / <span class="neg">${down}</span>`;
+  document.getElementById('kpi-breadth').innerHTML =
+    `<span class="fund-muted">${up}</span> <span style="color:var(--text3);font-weight:700">/</span> <span class="fund-muted">${down}</span>`;
   document.getElementById('kpi-breadth-note').textContent = `${Math.round((up / Math.max(rows.length,1)) * 100)}% positive`;
   document.getElementById('kpi-pe').innerHTML = medPe == null ? NA : medPe.toFixed(1) + 'x';
   document.getElementById('kpi-pe-note').textContent = `${rows.filter(s => s.pe > 0).length} companies with P/E`;
-  document.getElementById('kpi-quality').innerHTML = medRoe == null ? NA : fmtPct(medRoe,1);
+  document.getElementById('kpi-quality').innerHTML = medRoe == null ? NA : fmtPctMono(medRoe, 1);
 
   const title = activePill ? document.querySelector(`.pill[data-preset="${activePill}"]`)?.textContent || 'Custom screen' : 'All equities';
   const sortedLabel = COLUMNS.find(c => c.id === sortCol)?.label || sortCol;
   document.getElementById('view-title').textContent = title;
   document.getElementById('view-summary').textContent = `${rows.length} rows, sorted by ${sortedLabel}`;
 
-  renderTopScores(rows);
+  renderGainersLosers(rows);
   renderSectorLeaders(rows);
   renderQualityScatter(rows);
   renderMiniSectorHeatmap(rows);
 }
 
-function renderTopScores(rows) {
+function renderShortlistPanel(rows) {
   const rO = { Buy: 3, Hold: 2, Sell: 1 };
   const top = [...rows]
     .filter(s => s.market_cap && (s.roe != null || s.revenue_growth != null))
@@ -1251,7 +1517,7 @@ function renderTopScores(rows) {
       return (b.roe || 0) - (a.roe || 0);
     })
     .slice(0, 5);
-  document.getElementById('top-score-list').innerHTML = top.length ? top.map(s => `
+  document.getElementById('top-shortlist-list').innerHTML = top.length ? top.map(s => `
     <div class="rank-row">
       <span class="ticker" onclick="event.stopPropagation();gotoStock('${s.ticker}')">${s.ticker}</span>
       <span class="rank-name" title="${s.name}">${s.name}</span>
@@ -1263,7 +1529,7 @@ function renderTopScores(rows) {
 function renderSectorLeaders(rows) {
   const sectors = {};
   for (const s of rows) {
-    const sec = s.sector || 'Unknown';
+    const sec = s.sector || 'Other';
     if (!sectors[sec]) sectors[sec] = { cap: 0, weighted: 0, count: 0 };
     const cap = s.market_cap || 0;
     sectors[sec].cap += cap;
@@ -1275,13 +1541,13 @@ function renderSectorLeaders(rows) {
   })).sort((a,b) => b.avg - a.avg).slice(0, 6);
   const max = Math.max(...list.map(x => Math.abs(x.avg)), 1);
   document.getElementById('sector-leaders').innerHTML = list.length ? list.map(x => {
-    const cls = x.avg >= 0 ? 'pos' : 'neg';
-    const fill = x.avg >= 0 ? 'var(--green)' : 'var(--red)';
+    const pctCls = x.avg >= 0 ? 'fund-muted-up' : 'fund-muted-down';
+    const fill = x.avg >= 0 ? 'rgba(95,139,174,0.38)' : 'rgba(154,114,118,0.32)';
     const sign = x.avg > 0 ? '+' : '';
     return `<div class="sector-row" onclick="setPill('');document.getElementById('f-search').value='${jsStr(x.name)}';applyFilters()">
       <span class="sector-name" title="${x.name}">${x.name}</span>
       <span class="bar-track"><span class="bar-fill" style="width:${Math.max(8, Math.abs(x.avg)/max*100)}%;background:${fill}"></span></span>
-      <span class="sector-pct ${cls}">${sign}${x.avg.toFixed(2)}%</span>
+      <span class="sector-pct ${pctCls}" style="font-family:'JetBrains Mono',monospace;font-size:11px">${sign}${x.avg.toFixed(2)}%</span>
     </div>`;
   }).join('') : '<div class="dim">No sector data available.</div>';
 }
@@ -1293,7 +1559,7 @@ function renderQualityScatter(rows) {
   document.getElementById('quality-scatter').innerHTML = points.map(s => {
     const x = clamp((45 - s.ev_ebitda) / 45 * 92 + 4, 4, 96);
     const y = clamp((s.roe + 20) / 80 * 88 + 6, 6, 94);
-    const color = calcScore(s) >= 70 ? 'var(--green)' : calcScore(s) >= 50 ? 'var(--amber)' : 'var(--red)';
+    const color = 'rgba(118,154,219,0.85)';
     return `<span class="scatter-dot" title="${s.ticker} | EV/EBITDA ${s.ev_ebitda.toFixed(1)} | ROE ${s.roe.toFixed(1)}%" onclick="gotoStock('${s.ticker}')" style="left:${x}%;bottom:${y}%;background:${color}"></span>`;
   }).join('');
 }
@@ -1331,7 +1597,7 @@ function heatColor(pct) {
 function sectorGroups(rows) {
   const groups = {};
   for (const s of rows) {
-    const name = s.sector || 'Unknown';
+    const name = s.sector || 'Other';
     if (!groups[name]) groups[name] = {name, cap: 0, weighted: 0, count: 0, stocks: []};
     const cap = Number(s.market_cap) || 0;
     groups[name].cap += cap;
@@ -1348,8 +1614,7 @@ function renderMarketHeatmap(rows, targetId, opts={}) {
   const el = document.getElementById(targetId);
   if (!el) return;
   const compact = !!opts.compact;
-  const groups = sectorGroups(rows).filter(g => g.cap || g.count).slice(0, compact ? 8 : 24);
-  const maxCap = Math.max(...rows.map(s => Number(s.market_cap) || 0), 1);
+  const groups  = sectorGroups(rows).filter(g => g.cap || g.count).slice(0, compact ? 8 : 30);
   el.classList.toggle('full', !compact);
 
   if (!groups.length) {
@@ -1357,23 +1622,39 @@ function renderMarketHeatmap(rows, targetId, opts={}) {
     return;
   }
 
+  // Sector flex-basis proportional to total sector market cap (FinViz-style)
+  const totalAllCap = groups.reduce((s, g) => s + g.cap, 0) || 1;
+  const FULL_W = compact ? 700 : 1600;
+
   el.innerHTML = groups.map(g => {
-    const stocks = [...g.stocks]
+    const sectorBasis = Math.max(compact ? 110 : 160,
+                                  Math.round(g.cap / totalAllCap * FULL_W));
+
+    // Within-sector: tile size relative to the LARGEST stock in this sector
+    const sectorStocks = [...g.stocks]
       .sort((a,b) => (Number(b.market_cap)||0) - (Number(a.market_cap)||0))
-      .slice(0, compact ? 16 : 70);
+      .slice(0, compact ? 12 : 60);
+    const sectorMaxCap = Math.max(...sectorStocks.map(s => Number(s.market_cap)||0), 1);
+
     const sign = g.avg > 0 ? '+' : '';
-    const tiles = stocks.map(s => {
-      const cap = Number(s.market_cap) || 0;
-      const basis = clamp(Math.sqrt(cap) / Math.sqrt(maxCap) * (compact ? 160 : 260), compact ? 54 : 68, compact ? 150 : 260);
+    const tiles = sectorStocks.map(s => {
+      const cap   = Number(s.market_cap) || 0;
+      // sqrt scaling within sector — min 36px compact / 44px full, max 130px / 220px
+      const ratio = Math.sqrt(cap / sectorMaxCap);
+      const basis = clamp(ratio * (compact ? 100 : 180),
+                          compact ? 36 : 44,
+                          compact ? 130 : 220);
       const chg = Number(s.change_pct) || 0;
-      const sg = chg > 0 ? '+' : '';
-      return `<div class="stock-tile" style="--basis:${basis}px;background:${heatColor(chg)}" title="${esc(s.name)} | ${fmtLarge(cap).replace(/<[^>]+>/g,'')} | ${sg}${chg.toFixed(2)}%" onclick="event.stopPropagation();gotoStock('${s.ticker}')">
+      const sg  = chg > 0 ? '+' : '';
+      return `<div class="stock-tile" style="--basis:${basis}px;background:${heatColor(chg)}"
+        title="${esc(s.name)} | ${fmtLarge(cap).replace(/<[^>]+>/g,'')} | ${sg}${chg.toFixed(2)}%"
+        onclick="event.stopPropagation();gotoStock('${s.ticker}')">
         <div class="tile-ticker">${esc(s.ticker)}</div>
-        <div class="tile-name">${esc(s.name)}</div>
         <div class="tile-change">${sg}${chg.toFixed(2)}%</div>
       </div>`;
     }).join('');
-    return `<section class="heat-sector">
+
+    return `<section class="heat-sector" style="--sector-basis:${sectorBasis}px">
       <div class="heat-sector-head">
         <span class="heat-sector-name">${esc(g.name)}</span>
         <span class="heat-sector-meta">${g.count} · ${sign}${g.avg.toFixed(2)}%</span>
@@ -1454,6 +1735,7 @@ function openScreenerView() {
 }
 
 function openFocusView(kind) {
+  closeStockPeek();
   focusMode = kind;
   setActiveTopTab(kind);
   document.getElementById('insight-shell').classList.add('hidden');
@@ -1480,7 +1762,7 @@ function renderFocusContent(kind) {
         ['Total cap', fmtLarge(cap), `${rows.length} companies`],
         ['Largest company', top[0] ? esc(top[0].ticker) : NA, top[0] ? esc(top[0].name) : ''],
         ['Median P/E', medPe == null ? NA : medPe.toFixed(1) + 'x', 'Positive earnings only'],
-        ['Median ROE', medRoe == null ? NA : fmtPct(medRoe,1), 'Profitability pulse'],
+        ['Median ROE', medRoe == null ? NA : fmtPctMono(medRoe,1), 'Profitability pulse'],
       ]) + focusTable(top, [focusCols.ticker, focusCols.name, focusCols.cap, focusCols.chg, focusCols.pe, focusCols.roe]));
     return;
   }
@@ -1490,8 +1772,8 @@ function renderFocusContent(kind) {
     const losers = [...rows].filter(s => s.change_pct != null).sort((a,b) => a.change_pct - b.change_pct).slice(0, 35);
     focus.innerHTML = focusShell('Market Breadth', 'Advancers, decliners, and strongest daily moves',
       metricCards([
-        ['Advancers', `<span class="pos">${up}</span>`, `${Math.round(up / Math.max(rows.length,1) * 100)}% positive`],
-        ['Decliners', `<span class="neg">${down}</span>`, `${Math.round(down / Math.max(rows.length,1) * 100)}% negative`],
+        ['Advancers', `<span class="fund-muted">${up}</span>`, `${Math.round(up / Math.max(rows.length,1) * 100)}% positive`],
+        ['Decliners', `<span class="fund-muted">${down}</span>`, `${Math.round(down / Math.max(rows.length,1) * 100)}% negative`],
         ['Unchanged', rows.length - up - down, 'Flat or missing change'],
         ['Total rows', rows.length, 'Current screen'],
       ]) + `<div class="focus-grid" style="grid-template-columns:1fr 1fr">
@@ -1566,7 +1848,7 @@ function renderFocusContent(kind) {
     const dots = points.map(s => {
       const x = clamp((45 - s.ev_ebitda) / 45 * 92 + 4, 4, 96);
       const y = clamp((s.roe + 20) / 80 * 88 + 6, 6, 94);
-      const color = calcScore(s) >= 70 ? 'var(--green)' : calcScore(s) >= 50 ? 'var(--amber)' : 'var(--red)';
+      const color = 'rgba(118,154,219,0.85)';
       return `<span class="scatter-dot" title="${esc(s.ticker)} | EV/EBITDA ${s.ev_ebitda.toFixed(1)} | ROE ${s.roe.toFixed(1)}%" onclick="gotoStock('${s.ticker}')" style="left:${x}%;bottom:${y}%;background:${color}"></span>`;
     }).join('');
     focus.innerHTML = focusShell('Value vs Quality', 'Cheaper companies plot to the right; higher ROE plots upward',
@@ -1745,10 +2027,28 @@ async function forceRefresh() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Navigation to stock detail page
+// Quick peek (split view — no full page reload)
 // ═══════════════════════════════════════════════════════════════════════
 function gotoStock(ticker) {
-  window.location.href = `/stock/${ticker}`;
+  if (!ticker) return;
+  const sym = encodeURIComponent(String(ticker).trim().toUpperCase());
+  document.body.classList.add('peek-open');
+  document.getElementById('peek-panel').classList.remove('hidden');
+  document.getElementById('peek-title').textContent = ticker;
+  const exp = document.getElementById('peek-expand-link');
+  exp.href = `/stock/${sym}`;
+  document.getElementById('peek-frame').src = `/stock/${sym}?peek=1`;
+  _scheduleVirtRender();
+  window.dispatchEvent(new Event('resize'));
+}
+
+function closeStockPeek() {
+  document.body.classList.remove('peek-open');
+  document.getElementById('peek-panel').classList.add('hidden');
+  const f = document.getElementById('peek-frame');
+  if (f) f.src = 'about:blank';
+  _scheduleVirtRender();
+  window.dispatchEvent(new Event('resize'));
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1791,7 +2091,7 @@ function toggleHeatmap() {
 function renderHeatmap() {
   const sectors = {};
   for (const s of allStocks) {
-    const sec = s.sector || 'Unknown';
+    const sec = s.sector || 'Other';
     if (!sectors[sec]) sectors[sec] = { stocks: [], totalCap: 0, sumChg: 0, count: 0 };
     sectors[sec].stocks.push(s);
     sectors[sec].totalCap += s.market_cap || 0;
@@ -1852,6 +2152,7 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (e.key === 'Escape' && !inInput) {
+    if (document.body.classList.contains('peek-open')) { closeStockPeek(); return; }
     clearFilters(); return;
   }
   if ((e.key === 'j' || e.key === 'ArrowDown') && !inInput) {
@@ -1870,16 +2171,124 @@ document.addEventListener('keydown', e => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════
+// Gainers / Losers panel (replaces Analyst Shortlist on home)
+// ═══════════════════════════════════════════════════════════════════════
+function renderGainersLosers(rows) {
+  const withChg = rows.filter(s => s.change_pct != null && s.market_cap);
+  const gainers = [...withChg].sort((a,b) => b.change_pct - a.change_pct).slice(0,5);
+  const losers  = [...withChg].sort((a,b) => a.change_pct - b.change_pct).slice(0,5);
+
+  const row = s => `<div class="gl-row">
+    <span class="gl-ticker" onclick="event.stopPropagation();gotoStock('${s.ticker}')">${esc(s.ticker)}</span>
+    <span class="gl-name" title="${esc(s.name)}">${esc(s.name)}</span>
+    <span class="gl-pct ${s.change_pct>0?'pos':'neg'}">${s.change_pct>0?'+':''}${s.change_pct.toFixed(2)}%</span>
+  </div>`;
+
+  const gEl = document.getElementById('gl-gainers');
+  const lEl = document.getElementById('gl-losers');
+  if (gEl) gEl.innerHTML = gainers.length ? gainers.map(row).join('') : '<div class="dim">—</div>';
+  if (lEl) lEl.innerHTML = losers.length  ? losers.map(row).join('')  : '<div class="dim">—</div>';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TASE Indices strip
+// ═══════════════════════════════════════════════════════════════════════
+async function loadIndices() {
+  try {
+    const d = await (await fetch('/api/indices')).json();
+
+    const mainEl = document.getElementById('idx-main');
+    if (mainEl && d.main) {
+      mainEl.innerHTML = d.main.map(idx => {
+        const chg   = idx.change_pct;
+        const cls   = chg == null ? '' : chg > 0 ? 'mkt-up' : chg < 0 ? 'mkt-down' : '';
+        const sign  = chg != null && chg > 0 ? '+' : '';
+        const chgTx = chg != null ? `${sign}${chg.toFixed(2)}%` : '—';
+        const priceTx = idx.price != null ? idx.price.toLocaleString('en-US',{maximumFractionDigits:2}) : '—';
+        return `<div class="idx-main-card">
+          <div class="idx-label">${esc(idx.label)}</div>
+          <div class="idx-price">${priceTx}</div>
+          <div class="idx-chg ${cls}">${chgTx}</div>
+        </div>`;
+      }).join('');
+    }
+
+    const secEl = document.getElementById('idx-sectors');
+    if (secEl && d.sectors) {
+      secEl.innerHTML = d.sectors.map(idx => {
+        const chg  = idx.change_pct;
+        const cls  = chg == null ? '' : chg > 0 ? 'mkt-up' : chg < 0 ? 'mkt-down' : '';
+        const sign = chg != null && chg > 0 ? '+' : '';
+        const tx   = chg != null ? `${sign}${chg.toFixed(2)}%` : '—';
+        return `<div class="idx-sector-item">
+          <div class="idx-sector-name">${esc(idx.label)}</div>
+          <div class="idx-sector-chg ${cls}">${tx}</div>
+        </div>`;
+      }).join('');
+    }
+
+    // USD/ILS from fx endpoint (already loaded via loadFX)
+  } catch(e) { console.warn('loadIndices', e); }
+}
+
+// Patch loadFX to also update the indices strip USD box
+const _origLoadFX = loadFX;
+async function loadFX() {
+  try {
+    const d = await (await fetch('/api/fx')).json();
+    if (d.ils_per_usd) {
+      ilsPerUsd = d.ils_per_usd;
+      const rateEl = document.getElementById('usd-rate');
+      const chgEl  = document.getElementById('usd-chg');
+      if (rateEl) rateEl.textContent = d.ils_per_usd.toFixed(4);
+      // No daily change from /api/fx currently — leave blank
+    }
+  } catch {}
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Israeli market news feed
+// ═══════════════════════════════════════════════════════════════════════
+async function loadMarketNews() {
+  const section = document.getElementById('news-feed-section');
+  const grid    = document.getElementById('news-grid');
+  if (!section || !grid) return;
+  try {
+    const items = await (await fetch('/api/news/market')).json();
+    if (!Array.isArray(items) || !items.length) {
+      grid.innerHTML = '<div style="color:var(--text3);font-size:12px">אין חדשות כרגע</div>';
+      section.classList.remove('hidden');
+      return;
+    }
+    grid.innerHTML = items.map(n => `
+      <a class="news-card" href="${esc(n.url)}" target="_blank" rel="noopener">
+        <div class="news-card-source">${esc(n.source)}</div>
+        <div class="news-card-title">${esc(n.title)}</div>
+        ${n.date ? `<div class="news-card-date">${esc(n.date.slice(0,22))}</div>` : ''}
+      </a>`).join('');
+    section.classList.remove('hidden');
+  } catch(e) { console.warn('loadMarketNews', e); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Init
 // ═══════════════════════════════════════════════════════════════════════
 initColPrefs();
 buildColPanel();
 renderHeader();
 renderSkeleton();
+window.addEventListener('message', e => {
+  if (e.data && e.data.type === 'tase-close-peek') closeStockPeek();
+});
+
 loadFX();
+loadIndices();
+loadMarketNews();
 loadData(false);
 setInterval(() => loadData(false), 30*60*1000);
 setInterval(loadMarketBar, 5*60*1000);
+setInterval(loadIndices, 5*60*1000);
 </script>
 </body>
 </html>
