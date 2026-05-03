@@ -67,9 +67,36 @@
 
     /* ── Stock header ────────────────────────────────────────────────── */
     #stock-header {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
-      margin-bottom: 28px; padding-bottom: 24px; border-bottom: 1px solid var(--border);
+      margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
     }
+
+    /* ── Tear Sheet ──────────────────────────────────────────────────── */
+    .tear-sheet {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      border: 1px solid var(--border); border-radius: 6px;
+      overflow: hidden; margin-bottom: 20px;
+    }
+    .tear-group { border-right: 1px solid var(--border); }
+    .tear-group:last-child { border-right: none; }
+    .tear-group-hd {
+      font-size: 9px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--text3);
+      padding: 6px 10px 5px; background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+    }
+    .tear-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 4px 10px; border-bottom: 1px solid #0e0e13;
+    }
+    .tear-row:last-child { border-bottom: none; }
+    .tear-lbl { color: var(--text3); font-size: 11px; }
+    .tear-val {
+      color: var(--text); font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; font-variant-numeric: tabular-nums; text-align: right;
+    }
+
+    /* ── YoY delta in financials ─────────────────────────────────────── */
+    .yoy { font-size: 10px; margin-left: 5px; opacity: 0.75; }
     .hdr-left .company-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
     .hdr-ticker { font-family: 'JetBrains Mono', monospace; font-size: 26px; font-weight: 800; color: var(--accent); }
     .hdr-name   { font-size: 18px; font-weight: 600; color: var(--text); }
@@ -100,9 +127,7 @@
     .decision-lbl { font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; margin-bottom: 5px; }
     .decision-val { font-size: 16px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
     .decision-note { margin-top: 4px; font-size: 11px; color: var(--text3); line-height: 1.4; }
-    .decision-good { border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.08); }
-    .decision-mid { border-color: rgba(245,158,11,.32); background: rgba(245,158,11,.08); }
-    .decision-bad { border-color: rgba(239,68,68,.32); background: rgba(239,68,68,.08); }
+    .decision-good, .decision-mid, .decision-bad { /* colors removed — terminal palette */ }
 
     /* ── Chart + range ───────────────────────────────────────────────── */
     .range-row  { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; }
@@ -206,8 +231,12 @@
       .side-section { display: flex; align-items: center; gap: 6px; padding: 0; margin: 0; }
       .side-lbl { display: none; }
       #content { padding: 16px; }
-      #stock-header { grid-template-columns: 1fr; }
+      .tear-sheet { grid-template-columns: repeat(2, 1fr); }
       .decision-strip { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+    }
+    @media (max-width: 560px) {
+      .tear-sheet { grid-template-columns: 1fr; }
+      .tear-group { border-right: none; border-bottom: 1px solid var(--border); }
     }
   </style>
 </head>
@@ -260,25 +289,23 @@
 
       <!-- Header -->
       <div id="stock-header">
-        <div class="hdr-left">
-          <div class="company-line">
-            <span class="hdr-ticker" id="h-ticker"></span>
-            <span class="hdr-name"   id="h-name"></span>
-            <span class="sector-tag hidden" id="h-sector"></span>
-          </div>
-          <div class="price-row">
-            <span class="big-price" id="h-price"></span>
-            <span class="big-chg"   id="h-chg"></span>
-            <span class="stat-lbl"  id="h-mcap" style="font-size:13px;color:var(--text3)"></span>
-          </div>
-          <div class="sub-row" id="h-sub"></div>
-          <div class="desc-text" id="h-desc"></div>
-          <div class="meta-row"  id="h-meta"></div>
+        <div class="company-line">
+          <span class="hdr-ticker" id="h-ticker"></span>
+          <span class="hdr-name"   id="h-name"></span>
+          <span class="sector-tag hidden" id="h-sector"></span>
         </div>
-        <div class="stat-grid" id="stat-grid"></div>
+        <div class="price-row">
+          <span class="big-price" id="h-price"></span>
+          <span class="big-chg"   id="h-chg"></span>
+          <span class="stat-lbl"  id="h-mcap" style="font-size:13px;color:var(--text3)"></span>
+        </div>
+        <div class="sub-row" id="h-sub"></div>
+        <div class="desc-text" id="h-desc"></div>
+        <div class="meta-row"  id="h-meta"></div>
       </div>
 
-      <div class="decision-strip" id="decision-strip"></div>
+      <!-- Tear Sheet — dense metric grid above chart -->
+      <div class="tear-sheet" id="tear-sheet"></div>
 
       <!-- Chart section -->
       <div id="sec-overview">
@@ -418,8 +445,7 @@ async function loadStock() {
   });
 
   renderHeader();
-  renderStatGrid();
-  renderDecisionStrip();
+  renderTearSheet();
   renderStatistics();
   renderAnalysts();
 
@@ -485,46 +511,53 @@ function renderHeader() {
   document.getElementById('h-meta').innerHTML = meta.join('  ·  ');
 }
 
-// ── Key stat grid (top-right) ─────────────────────────────────────────
-function renderStatGrid() {
+// ── Tear Sheet ────────────────────────────────────────────────────────
+function renderTearSheet() {
   const s = stockInfo;
-  const m = (v,d) => v!=null?fmtN(v,d):NA;
-  const p = (v,d=1) => v!=null?fmtPct(v,d):NA;
-  const cards = [
-    ['P/E', m(s.pe,1)], ['P/S', m(s.ps_ratio,1)], ['EV/EBITDA', m(s.ev_ebitda,1)],
-    ['D/E', m(s.debt_equity,2)], ['ROE', p(s.roe)], ['ROA', p(s.roa)],
-    ['Rev Growth', p(s.revenue_growth)], ['EPS Growth', p(s.eps_growth)],
+  const v = (val, suf='') => val != null ? fmtN(val, suf==='x'?1:2) + suf : '—';
+  const pct = n => n != null ? `${n>0?'+':''}${n.toFixed(1)}%` : '—';
+  const pr  = n => n != null ? `₪${fmtN(n,2)}` : '—';
+  const vol = n => !n ? '—' : n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(0)+'K':String(n);
+  const row = (l, val) =>
+    `<div class="tear-row"><span class="tear-lbl">${l}</span><span class="tear-val">${val}</span></div>`;
+
+  const groups = [
+    { title: 'Valuation', rows: [
+      row('P/E (TTM)',   v(s.pe,    'x')),
+      row('Fwd P/E',    v(s.forward_pe, 'x')),
+      row('P/S',        v(s.ps_ratio,   'x')),
+      row('P/B',        v(s.pb_ratio,   'x')),
+      row('EV/EBITDA',  v(s.ev_ebitda,  'x')),
+    ]},
+    { title: 'Profitability', rows: [
+      row('ROE',          pct(s.roe)),
+      row('ROA',          pct(s.roa)),
+      row('Net Margin',   pct(s.net_margin)),
+      row('Op Margin',    pct(s.op_margin)),
+      row('Gross Margin', pct(s.gross_margin)),
+    ]},
+    { title: 'Financial Health', rows: [
+      row('Debt / Equity', s.debt_equity != null ? fmtN(s.debt_equity,2) : '—'),
+      row('Curr Ratio',    s.current_ratio != null ? fmtN(s.current_ratio,2) : '—'),
+      row('52W High',      s.week52_high != null ? `₪${s.week52_high}` : '—'),
+      row('52W Low',       s.week52_low  != null ? `₪${s.week52_low}`  : '—'),
+      row('Beta',          s.beta != null ? fmtN(s.beta,2) : '—'),
+    ]},
+    { title: 'Per Share', rows: [
+      row('EPS (TTM)',  s.eps      != null ? `₪${fmtN(s.eps,2)}` : '—'),
+      row('Div Yield', s.div_yield!= null ? s.div_yield.toFixed(2)+'%' : '—'),
+      row('Mkt Cap',   s.market_cap ? fmtL(s.market_cap).replace(/<[^>]+>/g,'') : '—'),
+      row('Volume',    vol(s.volume)),
+      row('IPO',       detailData.ipo_date || '—'),
+    ]},
   ];
-  document.getElementById('stat-grid').innerHTML = cards.map(([l,v]) =>
-    `<div class="stat-card"><div class="stat-lbl">${l}</div><div class="stat-val">${v}</div></div>`
+
+  document.getElementById('tear-sheet').innerHTML = groups.map(g =>
+    `<div class="tear-group">
+      <div class="tear-group-hd">${g.title}</div>
+      ${g.rows.join('')}
+    </div>`
   ).join('');
-}
-
-// ── Statistics page ────────────────────────────────────────────────────
-function gradeCard(label, value, note, grade) {
-  const cls = grade === 'good' ? 'decision-good' : grade === 'bad' ? 'decision-bad' : 'decision-mid';
-  return `<div class="decision-card ${cls}">
-    <div class="decision-lbl">${label}</div>
-    <div class="decision-val">${value}</div>
-    <div class="decision-note">${note}</div>
-  </div>`;
-}
-
-function renderDecisionStrip() {
-  const s = stockInfo;
-  const valMetric = s.ev_ebitda != null ? `${fmtN(s.ev_ebitda,1)}x` : (s.pe != null ? `${fmtN(s.pe,1)}x` : NA);
-  const valGrade = (s.ev_ebitda != null && s.ev_ebitda <= 10) || (s.pe != null && s.pe <= 14) ? 'good'
-    : (s.ev_ebitda != null && s.ev_ebitda > 22) || (s.pe != null && s.pe > 28) ? 'bad' : 'mid';
-  const qGrade = s.roe != null && s.roe >= 15 ? 'good' : s.roe != null && s.roe < 5 ? 'bad' : 'mid';
-  const levGrade = s.debt_equity != null && s.debt_equity <= .7 ? 'good' : s.debt_equity != null && s.debt_equity > 1.8 ? 'bad' : 'mid';
-  const growthGrade = s.revenue_growth != null && s.revenue_growth >= 12 ? 'good' : s.revenue_growth != null && s.revenue_growth < 0 ? 'bad' : 'mid';
-
-  document.getElementById('decision-strip').innerHTML = [
-    gradeCard('Valuation', valMetric, s.ev_ebitda != null ? 'EV/EBITDA primary metric' : 'P/E fallback metric', valGrade),
-    gradeCard('Quality', s.roe != null ? fmtPct(s.roe,1) : NA, 'Return on equity', qGrade),
-    gradeCard('Leverage', s.debt_equity != null ? fmtN(s.debt_equity,2) : NA, 'Debt to equity', levGrade),
-    gradeCard('Growth', s.revenue_growth != null ? fmtPct(s.revenue_growth,1) : NA, 'Revenue growth', growthGrade),
-  ].join('');
 }
 
 function renderStatistics() {
@@ -633,7 +666,15 @@ function renderFinTable(tab) {
     <div class="fin-wrap"><table class="fin-tbl">
       <thead><tr><th>Metric</th>${data.years.map(y=>`<th>${y}</th>`).join('')}</tr></thead>
       <tbody>${rows.map(r=>`<tr><td title="${r.name}">${rowLbl(r.name)}</td>
-        ${r.values.map(v=>`<td>${fmtFin(v)}</td>`).join('')}</tr>`).join('')}
+        ${r.values.map((v,i)=>{
+          let yoy='';
+          if(i>0 && v!=null && r.values[i-1]!=null && r.values[i-1]!==0){
+            const chg=(v-r.values[i-1])/Math.abs(r.values[i-1])*100;
+            const cls=chg>=0?'pos':'neg', sg=chg>=0?'+':'';
+            yoy=`<span class="yoy ${cls}">${sg}${chg.toFixed(1)}%</span>`;
+          }
+          return `<td>${fmtFin(v)}${yoy}</td>`;
+        }).join('')}</tr>`).join('')}
       </tbody>
     </table></div>`;
   renderComboChart(data, tab);

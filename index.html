@@ -244,17 +244,6 @@
     .zero { color: var(--text2); }
     .na   { color: #2a2a35; }
 
-    .score-chip {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 42px; height: 22px; border-radius: 5px;
-      font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
-      color: var(--text);
-      border: 1px solid var(--border2);
-      background: var(--surface2);
-    }
-    .score-high { color: var(--green); background: rgba(34,197,94,0.11); border-color: rgba(34,197,94,0.32); }
-    .score-mid  { color: var(--amber); background: rgba(245,158,11,0.10); border-color: rgba(245,158,11,0.28); }
-    .score-low  { color: var(--red); background: rgba(239,68,68,0.10); border-color: rgba(239,68,68,0.28); }
 
     .rating-badge { font-size: 10px; font-weight: 700; padding: 2px 8px;
                      border-radius: 4px; white-space: nowrap; display: inline-block; letter-spacing: 0.04em; }
@@ -762,7 +751,6 @@ const COLUMNS = [
   { id:'price',          label:'Price',        defaultOn:true  },
   { id:'change_pct',     label:'Chg %',        defaultOn:true  },
   { id:'market_cap',     label:'Mkt Cap',      defaultOn:true  },
-  { id:'score',          label:'Score',        defaultOn:true  },
   { id:'pe',             label:'P/E',          defaultOn:true  },
   { id:'forward_pe',     label:'Fwd P/E',      defaultOn:false },
   { id:'eps',            label:'EPS',          defaultOn:false },
@@ -805,31 +793,7 @@ const PILL_PRESETS = {
 // ═══════════════════════════════════════════════════════════════════════
 // Heatmap thresholds
 // ═══════════════════════════════════════════════════════════════════════
-function heatBg(val, col) {
-  if (val == null) return '';
-  const UP = { roe:[0,5,10,18,30], roa:[0,2,5,8,12], gross_margin:[0,20,35,50,65],
-               op_margin:[0,5,12,20,30], net_margin:[0,3,8,15,22], revenue_growth:[0,3,8,15,25],
-               eps_growth:[0,5,10,20,35] };
-  const DN = { pe:[8,12,20,35,60], ps_ratio:[0.5,1,2,4,8], pb_ratio:[0.5,1,2,3.5,6],
-               ev_ebitda:[5,8,15,25,40], debt_equity:[0,0.3,0.7,1.5,3] };
-  if (UP[col]) {
-    const t = UP[col];
-    if (val < 0)     return 'rgba(239,68,68,0.15)';
-    if (val < t[1])  return '';
-    if (val < t[2])  return 'rgba(34,197,94,0.08)';
-    if (val < t[3])  return 'rgba(34,197,94,0.15)';
-    return 'rgba(34,197,94,0.24)';
-  }
-  if (DN[col]) {
-    const t = DN[col];
-    if (val > t[4])  return 'rgba(239,68,68,0.15)';
-    if (val > t[3])  return 'rgba(239,68,68,0.08)';
-    if (val > t[2])  return '';
-    if (val > t[1])  return 'rgba(34,197,94,0.08)';
-    return 'rgba(34,197,94,0.15)';
-  }
-  return '';
-}
+function heatBg() { return ''; }
 
 // ═══════════════════════════════════════════════════════════════════════
 // State
@@ -903,6 +867,12 @@ const fmtPct = (n, dec=2) => {
   return `<span class="${cls}">${sign}${n.toFixed(dec)}%</span>`;
 };
 
+const fmtPctMono = (n, dec=1) => {
+  if (n == null) return NA;
+  const sign = n > 0 ? '+' : '';
+  return `<span style="color:var(--text2)">${sign}${n.toFixed(dec)}%</span>`;
+};
+
 const fmtRating = r => {
   if (!r) return NA;
   const cls = r==='Buy'?'rating-buy':r==='Sell'?'rating-sell':'rating-hold';
@@ -914,25 +884,6 @@ const esc = v => String(v ?? '').replace(/[&<>"']/g, ch => ({
 }[ch]));
 
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
-
-function calcScore(s) {
-  let score = 50;
-  if (s.roe != null) score += clamp((s.roe - 8) * 1.4, -14, 24);
-  if (s.revenue_growth != null) score += clamp(s.revenue_growth * 0.6, -12, 18);
-  if (s.ev_ebitda != null && s.ev_ebitda > 0) score += clamp((16 - s.ev_ebitda) * 1.2, -16, 18);
-  else if (s.pe != null && s.pe > 0) score += clamp((18 - s.pe) * 0.8, -12, 14);
-  if (s.debt_equity != null) score += clamp((0.9 - s.debt_equity) * 8, -12, 10);
-  if (s.net_margin != null) score += clamp(s.net_margin * 0.35, -8, 12);
-  if (s.change_pct != null) score += clamp(s.change_pct * 0.8, -8, 8);
-  if (!s.market_cap || s.market_cap < 250e6) score -= 5;
-  return Math.round(clamp(score, 0, 100));
-}
-
-function scoreHTML(s) {
-  const sc = calcScore(s);
-  const cls = sc >= 70 ? 'score-high' : sc >= 50 ? 'score-mid' : 'score-low';
-  return `<span class="score-chip ${cls}">${sc}</span>`;
-}
 
 // ═══════════════════════════════════════════════════════════════════════
 // Sparkline SVG
@@ -963,7 +914,6 @@ function sparkSVG(prices, w=80, h=28) {
 // Cell renderer
 // ═══════════════════════════════════════════════════════════════════════
 function renderCell(s, id) {
-  const hm = col => { const bg=heatBg(s[col],col); return bg?`style="background:${bg}"`:''; };
   switch(id) {
     case 'ticker':
       return `<td class="col-ticker"><span class="ticker" onclick="gotoStock('${s.ticker}')">${s.ticker}</span></td>`;
@@ -972,25 +922,24 @@ function renderCell(s, id) {
     case 'price':          return `<td>${fmtP(s.price)}</td>`;
     case 'change_pct':     return `<td>${fmtPct(s.change_pct)}</td>`;
     case 'market_cap':     return `<td>${fmtLarge(s.market_cap)}</td>`;
-    case 'score':          return `<td>${scoreHTML(s)}</td>`;
-    case 'pe':             return `<td ${hm('pe')}>${s.pe!=null?fmtNum(s.pe,1):NA}</td>`;
-    case 'forward_pe':     return `<td>${s.forward_pe!=null?fmtNum(s.forward_pe,1):NA}</td>`;
+    case 'pe':             return `<td>${s.pe!=null?fmtNum(s.pe,1)+'x':NA}</td>`;
+    case 'forward_pe':     return `<td>${s.forward_pe!=null?fmtNum(s.forward_pe,1)+'x':NA}</td>`;
     case 'eps':            return `<td>${s.eps!=null?fmtNum(s.eps):NA}</td>`;
     case 'volume':         return `<td>${fmtVol(s.volume)}</td>`;
     case 'week52_high':    return `<td>${s.week52_high!=null?fmtP(s.week52_high):NA}</td>`;
     case 'week52_low':     return `<td>${s.week52_low!=null?fmtP(s.week52_low):NA}</td>`;
-    case 'div_yield':      return `<td>${s.div_yield!=null?fmtNum(s.div_yield)+'%':NA}</td>`;
-    case 'ps_ratio':       return `<td ${hm('ps_ratio')}>${fmtNum(s.ps_ratio,1)}</td>`;
-    case 'pb_ratio':       return `<td ${hm('pb_ratio')}>${fmtNum(s.pb_ratio,1)}</td>`;
-    case 'ev_ebitda':      return `<td ${hm('ev_ebitda')}>${fmtNum(s.ev_ebitda,1)}</td>`;
-    case 'debt_equity':    return `<td ${hm('debt_equity')}>${fmtNum(s.debt_equity,2)}</td>`;
-    case 'roe':            return `<td ${hm('roe')}>${fmtPct(s.roe,1)}</td>`;
-    case 'roa':            return `<td ${hm('roa')}>${fmtPct(s.roa,1)}</td>`;
-    case 'gross_margin':   return `<td ${hm('gross_margin')}>${fmtPct(s.gross_margin,1)}</td>`;
-    case 'op_margin':      return `<td ${hm('op_margin')}>${fmtPct(s.op_margin,1)}</td>`;
-    case 'net_margin':     return `<td ${hm('net_margin')}>${fmtPct(s.net_margin,1)}</td>`;
-    case 'revenue_growth': return `<td ${hm('revenue_growth')}>${fmtPct(s.revenue_growth,1)}</td>`;
-    case 'eps_growth':     return `<td ${hm('eps_growth')}>${fmtPct(s.eps_growth,1)}</td>`;
+    case 'div_yield':      return `<td>${s.div_yield!=null?fmtNum(s.div_yield,1)+'%':NA}</td>`;
+    case 'ps_ratio':       return `<td>${s.ps_ratio!=null?fmtNum(s.ps_ratio,1)+'x':NA}</td>`;
+    case 'pb_ratio':       return `<td>${s.pb_ratio!=null?fmtNum(s.pb_ratio,1)+'x':NA}</td>`;
+    case 'ev_ebitda':      return `<td>${s.ev_ebitda!=null?fmtNum(s.ev_ebitda,1)+'x':NA}</td>`;
+    case 'debt_equity':    return `<td>${fmtNum(s.debt_equity,2)}</td>`;
+    case 'roe':            return `<td>${fmtPctMono(s.roe)}</td>`;
+    case 'roa':            return `<td>${fmtPctMono(s.roa)}</td>`;
+    case 'gross_margin':   return `<td>${fmtPctMono(s.gross_margin)}</td>`;
+    case 'op_margin':      return `<td>${fmtPctMono(s.op_margin)}</td>`;
+    case 'net_margin':     return `<td>${fmtPctMono(s.net_margin)}</td>`;
+    case 'revenue_growth': return `<td>${fmtPctMono(s.revenue_growth)}</td>`;
+    case 'eps_growth':     return `<td>${fmtPctMono(s.eps_growth)}</td>`;
     case 'beta':           return `<td>${s.beta!=null?fmtNum(s.beta,2):NA}</td>`;
     case 'analyst_rating': return `<td class="col-analyst_rating">${fmtRating(s.analyst_rating)}</td>`;
     case 'sector':
@@ -1025,7 +974,7 @@ function renderTable(stocks) {
 
 function renderSkeleton() {
   const cols = COLUMNS.filter(c => visibleCols.has(c.id));
-  const WW = {ticker:52,name:130,price:70,change_pct:55,market_cap:72,score:42,pe:36,forward_pe:42,
+  const WW = {ticker:52,name:130,price:70,change_pct:55,market_cap:72,pe:36,forward_pe:42,
                eps:50,volume:52,week52_high:62,week52_low:62,div_yield:48,
                ps_ratio:36,pb_ratio:36,ev_ebitda:52,debt_equity:36,roe:46,roa:46,
                gross_margin:48,op_margin:44,net_margin:44,revenue_growth:52,
@@ -1053,12 +1002,12 @@ function setDensity(px) {
 // ═══════════════════════════════════════════════════════════════════════
 function initColPrefs() {
   try {
-    const s = JSON.parse(localStorage.getItem('tase-cols-v3') || 'null');
+    const s = JSON.parse(localStorage.getItem('tase-cols-v4') || 'null');
     if (s && Array.isArray(s)) { visibleCols = new Set(s); return; }
   } catch {}
   visibleCols = new Set(COLUMNS.filter(c => c.defaultOn).map(c => c.id));
 }
-const saveCP = () => localStorage.setItem('tase-cols-v3', JSON.stringify([...visibleCols]));
+const saveCP = () => localStorage.setItem('tase-cols-v4', JSON.stringify([...visibleCols]));
 
 function toggleCol(id) {
   if (COLUMNS.find(c=>c.id===id)?.locked) return;
@@ -1239,17 +1188,22 @@ function renderDashboard(data) {
 }
 
 function renderTopScores(rows) {
+  const rO = { Buy: 3, Hold: 2, Sell: 1 };
   const top = [...rows]
-    .filter(s => s.market_cap && (s.pe || s.ev_ebitda || s.roe || s.revenue_growth))
-    .sort((a,b) => calcScore(b) - calcScore(a))
+    .filter(s => s.market_cap && (s.roe != null || s.revenue_growth != null))
+    .sort((a, b) => {
+      const ra = rO[a.analyst_rating] || 0, rb = rO[b.analyst_rating] || 0;
+      if (rb !== ra) return rb - ra;
+      return (b.roe || 0) - (a.roe || 0);
+    })
     .slice(0, 5);
   document.getElementById('top-score-list').innerHTML = top.length ? top.map(s => `
     <div class="rank-row">
       <span class="ticker" onclick="event.stopPropagation();gotoStock('${s.ticker}')">${s.ticker}</span>
       <span class="rank-name" title="${s.name}">${s.name}</span>
-      <span>${scoreHTML(s)}</span>
-      <span class="rank-meta">${s.ev_ebitda ? s.ev_ebitda.toFixed(1)+'x' : (s.pe ? s.pe.toFixed(1)+' P/E' : '')}</span>
-    </div>`).join('') : '<div class="dim">No scored companies in this screen.</div>';
+      <span class="rank-meta">${s.roe != null ? fmtPctMono(s.roe) : NA}</span>
+      <span class="rank-meta">${s.ev_ebitda ? s.ev_ebitda.toFixed(1)+'x EV' : (s.pe ? s.pe.toFixed(1)+'x PE' : '')}</span>
+    </div>`).join('') : '<div class="dim">No data in this screen.</div>';
 }
 
 function renderSectorLeaders(rows) {
@@ -1407,12 +1361,11 @@ const focusCols = {
   name: {label:'Company', render:s => esc(s.name)},
   cap: {label:'Mkt Cap', render:s => fmtLarge(s.market_cap)},
   chg: {label:'Chg %', render:s => fmtPct(s.change_pct)},
-  score: {label:'Score', render:s => scoreHTML(s)},
   pe: {label:'P/E', render:s => s.pe != null ? fmtNum(s.pe,1) + 'x' : NA},
   ev: {label:'EV/EBITDA', render:s => s.ev_ebitda != null ? fmtNum(s.ev_ebitda,1) + 'x' : NA},
   ps: {label:'P/S', render:s => s.ps_ratio != null ? fmtNum(s.ps_ratio,1) + 'x' : NA},
-  roe: {label:'ROE', render:s => fmtPct(s.roe,1)},
-  rev: {label:'Rev Growth', render:s => fmtPct(s.revenue_growth,1)},
+  roe: {label:'ROE', render:s => fmtPctMono(s.roe)},
+  rev: {label:'Rev Growth', render:s => fmtPctMono(s.revenue_growth)},
   debt: {label:'D/E', render:s => s.debt_equity != null ? fmtNum(s.debt_equity,2) : NA},
   div: {label:'Div %', render:s => s.div_yield != null ? fmtNum(s.div_yield,2) + '%' : NA},
 };
@@ -1512,22 +1465,29 @@ function renderFocusContent(kind) {
   if (kind === 'quality') {
     const quality = [...rows]
       .filter(s => s.roe != null || s.net_margin != null || s.revenue_growth != null)
-      .sort((a,b) => calcScore(b) - calcScore(a))
+      .sort((a, b) => (b.roe || 0) - (a.roe || 0))
       .slice(0, 80);
     focus.innerHTML = focusShell('Quality', 'Profitability, growth, and balance-sheet strength',
       metricCards([
-        ['Median ROE', medRoe == null ? NA : fmtPct(medRoe,1), 'Current screen'],
+        ['Median ROE', medRoe == null ? NA : fmtPctMono(medRoe), 'Current screen'],
         ['ROE above 15%', rows.filter(s => s.roe >= 15).length, 'High-return companies'],
         ['D/E below 0.7', rows.filter(s => s.debt_equity != null && s.debt_equity <= .7).length, 'Cleaner balance sheets'],
         ['Revenue growth above 10%', rows.filter(s => s.revenue_growth >= 10).length, 'Growth bucket'],
-      ]) + focusTable(quality, [focusCols.ticker, focusCols.name, focusCols.score, focusCols.roe, focusCols.rev, focusCols.debt, focusCols.cap]));
+      ]) + focusTable(quality, [focusCols.ticker, focusCols.name, focusCols.roe, focusCols.rev, focusCols.debt, focusCols.cap]));
     return;
   }
 
   if (kind === 'shortlist') {
-    const top = [...rows].sort((a,b) => calcScore(b) - calcScore(a)).slice(0, 100);
-    focus.innerHTML = focusShell('Analyst Shortlist', 'Composite score combining value, quality, growth, leverage, margin, and momentum',
-      focusTable(top, [focusCols.ticker, focusCols.name, focusCols.score, focusCols.cap, focusCols.ev, focusCols.pe, focusCols.roe, focusCols.rev]));
+    const rO = { Buy: 3, Hold: 2, Sell: 1 };
+    const top = [...rows]
+      .sort((a, b) => {
+        const ra = rO[a.analyst_rating] || 0, rb = rO[b.analyst_rating] || 0;
+        if (rb !== ra) return rb - ra;
+        return (b.roe || 0) - (a.roe || 0);
+      })
+      .slice(0, 100);
+    focus.innerHTML = focusShell('Analyst Shortlist', 'Sorted by analyst rating, then ROE — no black-box scoring',
+      focusTable(top, [focusCols.ticker, focusCols.name, focusCols.cap, focusCols.ev, focusCols.pe, focusCols.roe, focusCols.rev]));
     return;
   }
 
