@@ -15,9 +15,8 @@ access and cannot be used directly.
 """
 
 import os, json, time, requests
+from redis_client import rget, rset
 
-BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
-ENRICH_CACHE = os.path.join(BASE_DIR, 'enrich_cache.json')
 ENRICH_TTL   = 86400
 ENRICH_TOP_N = 150      # now covers more stocks since tase_financials is free
 
@@ -29,22 +28,28 @@ def _fmp(): return os.getenv('FMP_API_KEY', '')
 def _fnh(): return os.getenv('FINNHUB_API_KEY', '')
 
 
-# ── Cache I/O ──────────────────────────────────────────────────────────────
+# ── Cache I/O (Redis-first, JSON file fallback) ────────────────────────────
+
+_ENRICH_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'enrich_cache.json')
 
 def load_enrich_cache():
-    if not os.path.exists(ENRICH_CACHE):
-        return None, None
-    try:
-        with open(ENRICH_CACHE, 'r', encoding='utf-8') as f:
-            c = json.load(f)
-        return c.get('data'), c.get('timestamp', 0)
-    except Exception:
-        return None, None
+    # 1. Redis
+    cached = rget('tase:enrich')
+    if cached:
+        return cached.get('data'), cached.get('timestamp', 0)
+    # 2. JSON file fallback
+    if os.path.exists(_ENRICH_FILE):
+        try:
+            with open(_ENRICH_FILE, 'r', encoding='utf-8') as f:
+                c = json.load(f)
+            return c.get('data'), c.get('timestamp', 0)
+        except Exception:
+            pass
+    return None, None
 
 
 def save_enrich_cache(data):
-    with open(ENRICH_CACHE, 'w', encoding='utf-8') as f:
-        json.dump({'data': data, 'timestamp': time.time()}, f)
+    rset('tase:enrich', {'data': data, 'timestamp': time.time()}, ttl=ENRICH_TTL)
 
 
 # ── HTTP helper ────────────────────────────────────────────────────────────

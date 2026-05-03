@@ -962,15 +962,68 @@ function renderHeader() {
   }).join('');
 }
 
+// ── Virtual table renderer ────────────────────────────────────────────────
+// Only renders rows visible in the viewport + a buffer. Spacer <tr>s
+// maintain correct scrollbar height without DOM nodes for off-screen rows.
+const VIRT_BUFFER = 12;
+let   _virtRAF    = null;
+
 function renderTable(stocks) {
-  const cols  = COLUMNS.filter(c => visibleCols.has(c.id));
-  const tbody = document.getElementById('tbody');
-  if (!stocks.length) {
-    tbody.innerHTML = `<tr><td colspan="${cols.length}"><div class="no-results">No stocks match the current filters.</div></td></tr>`;
+  // currentRows is already set by applyFilters before this call
+  _scheduleVirtRender();
+}
+
+function _scheduleVirtRender() {
+  if (_virtRAF) return;
+  _virtRAF = requestAnimationFrame(_doVirtRender);
+}
+
+function _doVirtRender() {
+  _virtRAF = null;
+
+  const tbody   = document.getElementById('tbody');
+  const wrap    = document.querySelector('.table-wrap');
+  const cols    = COLUMNS.filter(c => visibleCols.has(c.id));
+  const colN    = cols.length;
+
+  if (!colN) return;
+
+  if (!currentRows.length) {
+    tbody.innerHTML = `<tr><td colspan="${colN}"><div class="no-results">No stocks match the current filters.</div></td></tr>`;
     return;
   }
-  tbody.innerHTML = stocks.map(s => `<tr>${cols.map(c => renderCell(s,c.id)).join('')}</tr>`).join('');
+
+  // If table is hidden (focus view active) skip render
+  if (wrap && wrap.classList.contains('hidden')) return;
+
+  const ROW_H    = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row-h')) || 44;
+  const tableEl  = document.getElementById('main-table');
+  const tableTop = tableEl ? tableEl.getBoundingClientRect().top + window.scrollY : 0;
+  const relScroll = Math.max(0, window.scrollY - tableTop);
+  const viewH    = window.innerHeight;
+
+  const start  = Math.max(0, Math.floor(relScroll / ROW_H) - VIRT_BUFFER);
+  const end    = Math.min(currentRows.length, Math.ceil((relScroll + viewH) / ROW_H) + VIRT_BUFFER);
+  const topH   = start * ROW_H;
+  const botH   = (currentRows.length - end) * ROW_H;
+  const sp     = `padding:0;border:0;pointer-events:none`;
+
+  const rows = currentRows.slice(start, end)
+    .map(s => `<tr>${cols.map(c => renderCell(s, c.id)).join('')}</tr>`)
+    .join('');
+
+  tbody.innerHTML =
+    (topH > 0 ? `<tr><td colspan="${colN}" style="height:${topH}px;${sp}"></td></tr>` : '') +
+    rows +
+    (botH > 0 ? `<tr><td colspan="${colN}" style="height:${botH}px;${sp}"></td></tr>` : '');
 }
+
+// Trigger re-render on page scroll (passive, debounced via rAF)
+window.addEventListener('scroll', () => {
+  if (currentRows.length > 30 && !document.querySelector('.table-wrap')?.classList.contains('hidden')) {
+    _scheduleVirtRender();
+  }
+}, { passive: true });
 
 function renderSkeleton() {
   const cols = COLUMNS.filter(c => visibleCols.has(c.id));
@@ -1150,6 +1203,7 @@ function sortValue(row, col) {
 function sortBy(col) {
   sortAsc = sortCol===col ? !sortAsc : false;
   sortCol = col;
+  scrollWorkAreaTop();
   renderHeader(); applyFilters();
 }
 

@@ -3,3 +3,5 @@ gunicorn
 yfinance
 requests
 python-dotenv
+redis
+schedule

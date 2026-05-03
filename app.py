@@ -1,114 +1,34 @@
 from flask import Flask, jsonify, send_from_directory, request
 import yfinance as yf
-from yfinance import EquityQuery, screen
-import json, os, time, threading, math
-import requests
+import json, os, time, math
 from dotenv import load_dotenv
-
-# Force a 30-second timeout on every outbound HTTP request (yfinance has no timeout by default)
-_orig_request = requests.Session.request
-def _request_with_timeout(self, method, url, **kwargs):
-    kwargs.setdefault('timeout', 30)
-    return _orig_request(self, method, url, **kwargs)
-requests.Session.request = _request_with_timeout
 
 load_dotenv()
 
-BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
-app              = Flask(__name__, static_folder=BASE_DIR)
+# Patch requests timeout before any outbound calls
+import requests as _req_mod
+_orig_request = _req_mod.Session.request
+def _request_with_timeout(self, method, url, **kwargs):
+    kwargs.setdefault('timeout', 30)
+    return _orig_request(self, method, url, **kwargs)
+_req_mod.Session.request = _request_with_timeout
+
+from redis_client import rget, rset, rttl, is_available
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app      = Flask(__name__, static_folder=BASE_DIR)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
-CACHE_FILE       = os.path.join(BASE_DIR, 'tase_cache.json')
-DETAIL_CACHE_DIR = os.path.join(BASE_DIR, 'detail_cache')
-CACHE_TTL        = 1800    # 30 min  — price data
-ENRICH_TTL       = 86400   # 24 hr   — fundamentals
-DETAIL_TTL       = 3600    # 1 hr    — per-stock detail
-MKT_TTL          = 300     # 5 min   — index / market summary
-
-_is_fetching  = False
-_is_enriching = False
-_mkt_cache    = {'data': None, 'ts': 0}
+CACHE_FILE   = os.path.join(BASE_DIR, 'tase_cache.json')
+ENRICH_FILE  = os.path.join(BASE_DIR, 'enrich_cache.json')
+DETAIL_TTL   = 3600
+MKT_TTL      = 300
+SPARK_TTL    = 3600
 
 
-# ── yfinance screener ──────────────────────────────────────────────────────
+# ── File-based fallbacks (used when Redis is not configured) ──────────────────
 
-def fetch_all_tase():
-    print('[Fetch] Starting fetch_all_tase', flush=True)
-    q = EquityQuery('eq', ['exchange', 'TLV'])
-    all_quotes, offset, page_size = [], 0, 100
-    while True:
-        print(f'[Fetch] Requesting offset={offset}', flush=True)
-        result = screen(q, sortField='intradaymarketcap', sortAsc=False,
-                        offset=offset, size=page_size)
-        quotes = result.get('quotes', [])
-        print(f'[Fetch] Got {len(quotes)} quotes (total={result.get("total", "?")})', flush=True)
-        if not quotes:
-            break
-        all_quotes.extend(quotes)
-        total = result.get('total', 0)
-        offset += page_size
-        if offset >= total:
-            break
-    stocks = [p for p in (parse_quote(s) for s in all_quotes) if p]
-    stocks.sort(key=lambda x: x.get('market_cap') or 0, reverse=True)
-    print(f'[Fetch] Done — {len(stocks)} stocks', flush=True)
-    return stocks
-
-
-def parse_quote(s):
-    symbol    = s.get('symbol')
-    price_ila = s.get('regularMarketPrice')
-    if not symbol or not price_ila or price_ila <= 0:
-        return None
-    divide    = s.get('currency', '') == 'ILA'
-    price_ils = round(price_ila / 100, 2) if divide else round(price_ila, 2)
-    change_pct = s.get('regularMarketChangePercent')
-    high_raw   = s.get('fiftyTwoWeekHigh')
-    low_raw    = s.get('fiftyTwoWeekLow')
-    high52     = round(high_raw / 100, 2) if (divide and high_raw) else high_raw
-    low52      = round(low_raw  / 100, 2) if (divide and low_raw)  else low_raw
-    market_cap = s.get('marketCap')
-    eps        = s.get('epsTrailingTwelveMonths')
-    pe         = s.get('trailingPE')
-    volume     = s.get('regularMarketVolume')
-    div_rate   = s.get('trailingAnnualDividendRate')
-    div_yield  = round(div_rate / price_ils * 100, 2) if (div_rate and price_ils) else None
-    name       = s.get('longName') or s.get('shortName') or symbol
-    return {
-        'ticker':      symbol.replace('.TA', ''),
-        'name':        name,
-        'price':       price_ils,
-        'change_pct':  round(change_pct, 2) if change_pct is not None else None,
-        'market_cap':  int(market_cap) if market_cap else None,
-        'pe':          round(pe, 1) if pe and 0 < pe < 10000 else None,
-        'eps':         round(eps, 2) if eps is not None else None,
-        'volume':      int(volume) if volume else None,
-        'week52_high': high52,
-        'week52_low':  low52,
-        'div_yield':   div_yield,
-        'sector':      '',
-    }
-
-
-# ── Cache I/O ──────────────────────────────────────────────────────────────
-
-def load_cache():
-    if not os.path.exists(CACHE_FILE):
-        return None, None
-    with open(CACHE_FILE, 'r', encoding='utf-8') as f:
-        c = json.load(f)
-    return c.get('data'), c.get('timestamp', 0)
-
-
-def save_cache(data):
-    with open(CACHE_FILE, 'w', encoding='utf-8') as f:
-        json.dump({'data': data, 'timestamp': time.time()}, f)
-
-
-# ── Detail cache ───────────────────────────────────────────────────────────
-
-def load_detail_cache(ticker):
-    path = os.path.join(DETAIL_CACHE_DIR, f'{ticker}.json')
+def _file_load(path):
     if not os.path.exists(path):
         return None, None
     try:
@@ -119,52 +39,33 @@ def load_detail_cache(ticker):
         return None, None
 
 
-def save_detail_cache(ticker, data):
-    os.makedirs(DETAIL_CACHE_DIR, exist_ok=True)
-    path = os.path.join(DETAIL_CACHE_DIR, f'{ticker}.json')
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump({'data': data, 'timestamp': time.time()}, f)
+def _stocks_from_redis_or_file():
+    """Return (data_list, timestamp) from Redis if available, else JSON file."""
+    cached = rget('tase:stocks')
+    if cached:
+        return cached.get('data', []), cached.get('timestamp', 0)
+    data, ts = _file_load(CACHE_FILE)
+    return (data or []), (ts or 0)
 
 
-# ── Enrichment ─────────────────────────────────────────────────────────────
-
-def _should_enrich():
-    try:
-        from enrichment import load_enrich_cache
-        _, ts = load_enrich_cache()
-        return ts is None or (time.time() - ts) > ENRICH_TTL
-    except Exception:
-        return False
+def _enrich_from_redis_or_file():
+    """Return enrichment dict from Redis if available, else JSON file."""
+    cached = rget('tase:enrich')
+    if cached:
+        return cached.get('data', {})
+    data, _ = _file_load(ENRICH_FILE)
+    return data or {}
 
 
-def start_enrich_bg(yf_stocks):
-    global _is_enriching
-    if _is_enriching:
-        return
-    _is_enriching = True
-    def bg():
-        global _is_enriching
-        try:
-            from enrichment import build_enrichment, save_enrich_cache
-            enrich = build_enrichment(yf_stocks)
-            save_enrich_cache(enrich)
-        except Exception as e:
-            print(f'  [Enrich] Error: {e}')
-        finally:
-            _is_enriching = False
-    threading.Thread(target=bg, daemon=True).start()
+# ── Enrichment merge ──────────────────────────────────────────────────────────
 
-
-def merge_enrichment(stocks):
-    try:
-        from enrichment import load_enrich_cache
-        enrich_data, _ = load_enrich_cache()
-    except Exception:
-        enrich_data = None
+def merge_enrichment(stocks, enrich_data=None):
+    if enrich_data is None:
+        enrich_data = _enrich_from_redis_or_file()
     out = []
     for s in stocks:
         row = dict(s)
-        e = (enrich_data or {}).get(s['ticker'], {})
+        e = enrich_data.get(s['ticker'], {})
         row['sector']         = e.get('sector')         or row.get('sector', '')
         row['industry']       = e.get('industry')
         row['ps_ratio']       = e.get('ps_ratio')
@@ -191,39 +92,10 @@ def merge_enrichment(stocks):
     return out
 
 
-# ── Background fetch ───────────────────────────────────────────────────────
-
-_fetch_error = None
-
-def start_bg_fetch():
-    global _is_fetching, _fetch_error
-    if _is_fetching:
-        return
-    _is_fetching = True
-    _fetch_error = None
-    def bg():
-        global _is_fetching, _fetch_error
-        try:
-            fresh = fetch_all_tase()
-            if fresh:
-                save_cache(fresh)
-                if _should_enrich():
-                    start_enrich_bg(fresh)
-            else:
-                _fetch_error = 'No data returned from Yahoo Finance'
-        except Exception as e:
-            _fetch_error = str(e)
-            print(f'  [Fetch] Error: {e}')
-        finally:
-            _is_fetching = False
-    threading.Thread(target=bg, daemon=True).start()
-
-
-# ── Stock detail helpers ───────────────────────────────────────────────────
+# ── Stock detail helpers ──────────────────────────────────────────────────────
 
 def _safe_num(v):
-    if v is None:
-        return None
+    if v is None: return None
     try:
         f = float(v)
         return None if (math.isnan(f) or math.isinf(f)) else int(f)
@@ -254,22 +126,21 @@ def _parse_fin_df(df):
 
 
 def _fetch_news(bare_ticker):
-    import requests
-    from datetime import datetime, timedelta
-    key  = os.getenv('FINNHUB_API_KEY', '')
+    key = os.getenv('FINNHUB_API_KEY', '')
     if not key:
         return []
+    from datetime import datetime, timedelta
     to_d   = datetime.now().strftime('%Y-%m-%d')
     from_d = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
     try:
-        r = requests.get('https://finnhub.io/api/v1/company-news',
+        r = _req_mod.get('https://finnhub.io/api/v1/company-news',
                          params={'symbol': bare_ticker, 'from': from_d, 'to': to_d, 'token': key},
                          timeout=10)
         if r.status_code == 200:
             items = r.json()
             if isinstance(items, list):
-                return [{'headline': i.get('headline',''), 'source': i.get('source',''),
-                         'url': i.get('url',''), 'datetime': i.get('datetime',0),
+                return [{'headline': i.get('headline', ''), 'source': i.get('source', ''),
+                         'url': i.get('url', ''), 'datetime': i.get('datetime', 0),
                          'summary': (i.get('summary') or '')[:200]}
                         for i in items[:10] if i.get('headline')]
     except Exception:
@@ -278,11 +149,6 @@ def _fetch_news(bare_ticker):
 
 
 def fetch_stock_detail(ticker):
-    """
-    Fetch OHLCV, financials, news, profile, and ratios for one ticker.
-    Ratios come from tase_financials (self-computed from statements when
-    stock.info fields are N/A — covers TASE-only banks, RE, etc.).
-    """
     from tase_financials import get_financials as tase_fin
 
     yf_sym = ticker + '.TA'
@@ -319,17 +185,14 @@ def fetch_stock_detail(ticker):
     cashflow = _parse_fin_df(stock.cashflow)
     news     = _fetch_news(ticker)
 
-    # Fresh ratios from tase_financials — self-computes missing ones from statements
     try:
         tfin = tase_fin(ticker)
     except Exception:
         tfin = {}
 
-    # Profile fields from enrich_cache (description, CEO, logo, etc.)
     try:
-        from enrichment import load_enrich_cache
-        enrich_data, _ = load_enrich_cache()
-        e = (enrich_data or {}).get(ticker, {})
+        enrich_data = _enrich_from_redis_or_file()
+        e = enrich_data.get(ticker, {})
     except Exception:
         e = {}
 
@@ -339,14 +202,12 @@ def fetch_stock_detail(ticker):
         'balance':        balance,
         'cashflow':       cashflow,
         'news':           news,
-        # Profile (from enrich_cache / tase_financials)
         'description':    e.get('description') or tfin.get('description'),
         'ceo':            e.get('ceo'),
         'employees':      e.get('employees')   or tfin.get('employees'),
         'website':        e.get('website')     or tfin.get('website'),
         'logo':           e.get('logo'),
         'ipo_date':       e.get('ipo_date')    or tfin.get('ipo_date'),
-        # Ratios — fresh from tase_financials (covers TASE-only stocks)
         'ps_ratio':       tfin.get('ps_ratio'),
         'pb_ratio':       tfin.get('pb_ratio'),
         'ev_ebitda':      tfin.get('ev_ebitda'),
@@ -366,10 +227,11 @@ def fetch_stock_detail(ticker):
     }
 
 
-# ── Market summary ─────────────────────────────────────────────────────────
+# ── Market data (fetched live, cached in Redis/memory) ───────────────────────
+
+_mkt_mem = {'data': None, 'ts': 0}
 
 def _fetch_market_data():
-    """Fetch TA-35, TA-125, bond yields, FX + breadth from cache."""
     def idx_info(sym):
         try:
             h = yf.Ticker(sym).history(period='5d', interval='1d')
@@ -384,35 +246,27 @@ def _fetch_market_data():
 
     def bond_yield(sym):
         try:
-            t = yf.Ticker(sym)
-            p = t.fast_info.last_price
+            p = yf.Ticker(sym).fast_info.last_price
             return round(float(p), 3) if p else None
         except Exception:
             return None
 
     ta35  = idx_info('^TA35')
     ta125 = idx_info('^TA125')
-    # Israeli government bond yields — try TASE bond tickers
-    il10y = bond_yield('IL10Y=X') or bond_yield('^TNX')   # 10-year fallback to US
+    il10y = bond_yield('IL10Y=X') or bond_yield('^TNX')
     il2y  = bond_yield('IL02Y=X')
 
-    stocks    = load_cache()[0] or []
+    stocks, _ = _stocks_from_redis_or_file()
     vol_total = sum(s.get('volume') or 0 for s in stocks)
     advancing = sum(1 for s in stocks if (s.get('change_pct') or 0) > 0)
     declining = sum(1 for s in stocks if (s.get('change_pct') or 0) < 0)
 
-    return {
-        'ta35':      ta35,
-        'ta125':     ta125,
-        'vol_total': vol_total,
-        'advancing': advancing,
-        'declining': declining,
-        'il10y':     il10y,
-        'il2y':      il2y,
-    }
+    return {'ta35': ta35, 'ta125': ta125, 'vol_total': vol_total,
+            'advancing': advancing, 'declining': declining,
+            'il10y': il10y, 'il2y': il2y}
 
 
-# ── Routes ─────────────────────────────────────────────────────────────────
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.route('/')
 def index():
@@ -429,57 +283,67 @@ def no_cache_html(response):
 
 @app.route('/api/stocks')
 def stocks():
-    data, ts = load_cache()
-    age = time.time() - ts if ts else None
-    if data is None:
-        if _fetch_error and not _is_fetching:
-            return jsonify({'data': [], 'fetching': False, 'first_run': True, 'error': _fetch_error})
-        start_bg_fetch()
-        return jsonify({'data': [], 'fetching': True, 'first_run': True})
-    if age and age > CACHE_TTL:
-        start_bg_fetch()
+    data, ts = _stocks_from_redis_or_file()
+    error = rget('tase:fetch_error')
+
+    if not data:
+        msg = error or ('No data yet. Run: python worker.py --once' if is_available()
+                        else 'No data yet. Cache files not found.')
+        return jsonify({'data': [], 'fetching': False, 'first_run': True, 'error': msg})
+
+    age     = time.time() - ts if ts else None
+    ttl_val = rttl('tase:stocks')
+    stale   = (ttl_val is not None and ttl_val < 60) or (age and age > 1800)
+
     merged = merge_enrichment(data)
     return jsonify({
         'data':      merged,
         'cached':    True,
         'cache_age': round(age) if age else None,
-        'stale':     bool(age and age > CACHE_TTL),
-        'fetching':  _is_fetching,
-        'enriching': _is_enriching,
+        'stale':     bool(stale),
+        'fetching':  False,
+        'enriching': False,
         'timestamp': ts,
+        'redis':     is_available(),
     })
 
 
 @app.route('/api/refresh', methods=['POST'])
 def refresh():
-    global _is_fetching
-    _is_fetching = False
-    start_bg_fetch()
-    return jsonify({'status': 'started'})
+    """
+    Signals the worker to refresh. If a worker process is running it will
+    pick up the flag; otherwise returns instructions to run worker.py.
+    """
+    rset('tase:refresh_requested', True, ttl=3600)
+    return jsonify({'status': 'refresh_requested',
+                    'message': 'Run `python worker.py --once` if no worker is running.'})
 
 
 @app.route('/api/status')
 def status():
-    data, ts = load_cache()
+    data, ts = _stocks_from_redis_or_file()
     age = time.time() - ts if ts else None
     return jsonify({
-        'fetching':    _is_fetching,
-        'enriching':   _is_enriching,
+        'fetching':    False,
+        'enriching':   False,
         'cache_age':   round(age) if age else None,
         'stock_count': len(data) if data else 0,
-        'error':       _fetch_error,
+        'error':       rget('tase:fetch_error'),
+        'redis':       is_available(),
         'progress':    {'done': 0, 'total': 0},
     })
 
 
 @app.route('/api/detail/<ticker>')
 def detail(ticker):
-    cached, ts = load_detail_cache(ticker)
-    if cached and ts and (time.time() - ts) < DETAIL_TTL:
+    # Check Redis detail cache first
+    cached = rget(f'tase:detail:{ticker}')
+    if cached and cached.get('_ts') and (time.time() - cached['_ts']) < DETAIL_TTL:
         return jsonify(cached)
     try:
         result = fetch_stock_detail(ticker)
-        save_detail_cache(ticker, result)
+        result['_ts'] = time.time()
+        rset(f'tase:detail:{ticker}', result, ttl=DETAIL_TTL)
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -487,52 +351,54 @@ def detail(ticker):
 
 @app.route('/api/market')
 def market():
-    now = time.time()
-    if _mkt_cache['data'] and (now - _mkt_cache['ts']) < MKT_TTL:
-        return jsonify(_mkt_cache['data'])
+    # Check Redis then memory cache
+    cached = rget('tase:market')
+    if cached and cached.get('_ts') and (time.time() - cached['_ts']) < MKT_TTL:
+        return jsonify(cached)
+    if _mkt_mem['data'] and (time.time() - _mkt_mem['ts']) < MKT_TTL:
+        return jsonify(_mkt_mem['data'])
     try:
         data = _fetch_market_data()
-        _mkt_cache['data'] = data
-        _mkt_cache['ts']   = now
+        data['_ts'] = time.time()
+        rset('tase:market', data, ttl=MKT_TTL)
+        _mkt_mem['data'] = data
+        _mkt_mem['ts']   = time.time()
         return jsonify(data)
     except Exception as e:
-        if _mkt_cache['data']:
-            return jsonify(_mkt_cache['data'])
+        if _mkt_mem['data']:
+            return jsonify(_mkt_mem['data'])
         return jsonify({'error': str(e)}), 500
 
 
-# Sparkline cache: {ticker: [prices], ...}  refreshed every hour
-_spark_cache = {'data': {}, 'ts': 0}
-SPARK_TTL    = 3600
-
 @app.route('/api/sparklines')
 def sparklines():
-    """Return 1-month daily closing prices (% change from start) for top 100 stocks."""
-    now = time.time()
-    if _spark_cache['data'] and (now - _spark_cache['ts']) < SPARK_TTL:
-        return jsonify(_spark_cache['data'])
+    cached = rget('tase:sparklines')
+    if cached and cached.get('_ts') and (time.time() - cached.get('_ts', 0)) < SPARK_TTL:
+        payload = {k: v for k, v in cached.items() if k != '_ts'}
+        return jsonify(payload)
     try:
-        data, _ = load_cache()
+        data, _ = _stocks_from_redis_or_file()
         if not data:
             return jsonify({})
-        top100 = [s['ticker'] + '.TA' for s in data[:100]]
         import pandas as pd
-        hist = yf.download(top100, period='1mo', interval='1d',
-                           auto_adjust=True, progress=False, threads=True)
+        top100 = [s['ticker'] + '.TA' for s in data[:100]]
+        hist   = yf.download(top100, period='1mo', interval='1d',
+                             auto_adjust=True, progress=False, threads=True)
         closes = hist.get('Close', hist) if isinstance(hist.columns, pd.MultiIndex) else hist
         result = {}
         for sym in top100:
             tk = sym.replace('.TA', '')
             try:
-                col = sym if sym in closes.columns else tk
+                col    = sym if sym in closes.columns else tk
                 prices = closes[col].dropna().tolist()
                 if len(prices) >= 2:
                     first = prices[0]
                     result[tk] = [round((p - first) / first * 100, 2) for p in prices]
             except Exception:
                 pass
-        _spark_cache['data'] = result
-        _spark_cache['ts']   = now
+        result['_ts'] = time.time()
+        rset('tase:sparklines', result, ttl=SPARK_TTL)
+        result.pop('_ts', None)
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -543,35 +409,37 @@ def stock_page(ticker):
     return send_from_directory(BASE_DIR, 'stock.html')
 
 
-# FX rate cache
-_fx_cache = {'data': None, 'ts': 0}
+_fx_mem = {'data': None, 'ts': 0}
 
 @app.route('/api/fx')
 def fx():
-    """Return USD/ILS exchange rate (cached 1 hour)."""
-    now = time.time()
-    if _fx_cache['data'] and (now - _fx_cache['ts']) < 3600:
-        return jsonify(_fx_cache['data'])
+    cached = rget('tase:fx')
+    if cached and cached.get('_ts') and (time.time() - cached['_ts']) < 3600:
+        return jsonify({k: v for k, v in cached.items() if k != '_ts'})
+    if _fx_mem['data'] and (time.time() - _fx_mem['ts']) < 3600:
+        return jsonify(_fx_mem['data'])
     try:
         rate = float(yf.Ticker('USDILS=X').fast_info.last_price)
         data = {'ils_per_usd': round(rate, 4), 'usd_per_ils': round(1/rate, 6)}
-        _fx_cache['data'] = data; _fx_cache['ts'] = now
+        payload = {**data, '_ts': time.time()}
+        rset('tase:fx', payload, ttl=3600)
+        _fx_mem['data'] = data; _fx_mem['ts'] = time.time()
         return jsonify(data)
     except Exception:
         return jsonify({'ils_per_usd': 3.65, 'usd_per_ils': 0.2740})
 
 
-# Earnings cache
-_earn_cache = {'data': None, 'ts': 0}
+_earn_mem = {'data': None, 'ts': 0}
 
 @app.route('/api/earnings')
 def earnings():
-    """Return upcoming earnings dates for top 60 stocks (cached 6 hours)."""
-    now = time.time()
-    if _earn_cache['data'] and (now - _earn_cache['ts']) < 21600:
-        return jsonify(_earn_cache['data'])
+    cached = rget('tase:earnings')
+    if cached and cached.get('_ts') and (time.time() - cached['_ts']) < 21600:
+        return jsonify([v for v in cached.get('items', [])])
+    if _earn_mem['data'] and (time.time() - _earn_mem['ts']) < 21600:
+        return jsonify(_earn_mem['data'])
     try:
-        stocks_data, _ = load_cache()
+        stocks_data, _ = _stocks_from_redis_or_file()
         if not stocks_data:
             return jsonify([])
         result = []
@@ -587,7 +455,8 @@ def earnings():
             except Exception:
                 pass
         result.sort(key=lambda x: x['date'])
-        _earn_cache['data'] = result; _earn_cache['ts'] = now
+        rset('tase:earnings', {'items': result, '_ts': time.time()}, ttl=21600)
+        _earn_mem['data'] = result; _earn_mem['ts'] = time.time()
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -595,7 +464,9 @@ def earnings():
 
 if __name__ == '__main__':
     port = int(os.getenv('TASE_PORT') or os.getenv('PORT') or 5000)
-    url = f'http://localhost:{port}'
-    print(f'\n  TASE Stock Screener  ->  {url}\n')
+    url  = f'http://localhost:{port}'
+    print(f'\n  TASE Stock Screener  ->  {url}')
+    print(f'  Redis: {"connected" if is_available() else "not configured (file fallback)"}')
+    import threading
     threading.Timer(1.5, lambda: __import__('webbrowser').open(url)).start()
     app.run(host='localhost', port=port, debug=False)

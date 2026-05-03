@@ -9,40 +9,34 @@ SQLite cache (tase_financials.db) with 24hr TTL — yfinance is called at most
 once per stock per day.
 """
 
-import os, sqlite3, json, time, math
+import os, time, math
 import yfinance as yf
+from redis_client import rget, rset
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH  = os.path.join(BASE_DIR, 'tase_financials.db')
-TTL      = 86400
-
-
-# ── Database ───────────────────────────────────────────────────────────────
-
-def _db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute('''CREATE TABLE IF NOT EXISTS financials
-                    (ticker TEXT PRIMARY KEY, data_json TEXT NOT NULL, fetched_at REAL NOT NULL)''')
-    conn.commit()
-    return conn
+TTL = 86400   # 24 hr
 
 
-def _load_db(ticker):
-    with _db() as conn:
-        row = conn.execute('SELECT data_json, fetched_at FROM financials WHERE ticker=?', (ticker,)).fetchone()
-    if row:
-        age = time.time() - row[1]
-        if age < TTL:
-            return json.loads(row[0]), row[1]
+# ── Cache (Redis-first, in-memory fallback) ───────────────────────────────────
+
+_mem_cache = {}  # {ticker: (data, timestamp)} — process-local fallback
+
+def _load_cache(ticker):
+    # 1. Try Redis
+    cached = rget(f'tase:fin:{ticker}')
+    if cached and cached.get('_ts') and (time.time() - cached['_ts']) < TTL:
+        return cached, cached['_ts']
+    # 2. Try in-memory
+    if ticker in _mem_cache:
+        data, ts = _mem_cache[ticker]
+        if time.time() - ts < TTL:
+            return data, ts
     return None, None
 
 
-def _save_db(ticker, data):
-    ts = time.time()
-    with _db() as conn:
-        conn.execute('INSERT OR REPLACE INTO financials (ticker, data_json, fetched_at) VALUES (?,?,?)',
-                     (ticker, json.dumps(data, default=str), ts))
-        conn.commit()
+def _save_cache(ticker, data):
+    payload = {**data, '_ts': time.time()}
+    rset(f'tase:fin:{ticker}', payload, ttl=TTL)
+    _mem_cache[ticker] = (data, time.time())
 
 
 # ── Value helpers ──────────────────────────────────────────────────────────
@@ -312,8 +306,9 @@ def fetch_financials(ticker: str) -> dict:
 
 def get_financials(ticker: str, force_refresh: bool = False) -> dict:
     if not force_refresh:
-        cached, _ = _load_db(ticker)
-        if cached: return cached
+        cached, _ = _load_cache(ticker)
+        if cached:
+            return cached
     data = fetch_financials(ticker)
-    _save_db(ticker, data)
+    _save_cache(ticker, data)
     return data
