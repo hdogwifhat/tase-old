@@ -223,14 +223,40 @@ _MAIN_INDICES = [
     {'label': 'SME-60', 'sym': 'MIDCAP50.TA',  'tase_id': 164},
 ]
 
-_SECTOR_INDICES = [
-    {'label': 'ביטחוניות', 'sym': None,            'tase_id': 207},
-    {'label': 'טכנולוגיה',  'sym': 'TA-TECH.TA',    'tase_id': None},
-    {'label': 'בנקים',      'sym': 'TA-BANK.TA',    'tase_id': None},
-    {'label': 'נדל"ן',      'sym': 'TA-REALE.TA',   'tase_id': None},
-    {'label': 'ביומד',      'sym': 'TA-BOMED.TA',   'tase_id': None},
-    {'label': 'אנרגיה',     'sym': 'TA-ENRGY.TA',   'tase_id': None},
+_SECTOR_INDICES_LABELS = [
+    ('ביטחוניות', ['defense', 'aerospace', 'military', 'security']),
+    ('טכנולוגיה',  ['technology', 'software', 'semiconductor', 'electronic', 'communication']),
+    ('בנקים',      ['bank', 'financial service', 'insurance', 'capital market', 'diversified financ']),
+    ('נדל"ן',      ['real estate', 'reit']),
+    ('ביומד',      ['healthcare', 'biotech', 'pharmaceutical', 'medical', 'life science', 'drug']),
+    ('אנרגיה',     ['energy', 'oil', 'gas', 'utilities', 'power']),
 ]
+
+def _sector_perf_from_stocks():
+    """Compute sector performance directly from the cached stock universe.
+    Market-cap weighted average change_pct per sector.
+    No external API needed.
+    """
+    stocks, _ = _stocks_from_redis_or_file()
+    result = []
+    for label, keywords in _SECTOR_INDICES_LABELS:
+        group = []
+        for s in stocks:
+            tags = ((s.get('sector') or '') + ' ' + (s.get('industry') or '')).lower()
+            if any(kw in tags for kw in keywords):
+                group.append(s)
+        if not group:
+            result.append({'label': label, 'price': None, 'change_pct': None})
+            continue
+        total_cap = sum(s.get('market_cap') or 0 for s in group)
+        if not total_cap:
+            result.append({'label': label, 'price': None, 'change_pct': None})
+            continue
+        weighted = sum((s.get('change_pct') or 0) * (s.get('market_cap') or 0)
+                       for s in group) / total_cap
+        result.append({'label': label, 'price': None,
+                       'change_pct': round(weighted, 2)})
+    return result
 
 
 def _fetch_index_quote(sym=None, tase_id=None):
@@ -516,8 +542,7 @@ def indices():
         return jsonify({k: v for k, v in cached.items() if k != '_ts'})
     result = {
         'main':    [{**idx, **_fetch_index_quote(idx['sym'], idx.get('tase_id'))} for idx in _MAIN_INDICES],
-        'sectors': [{**idx, **_fetch_index_quote(idx.get('sym'), idx.get('tase_id'))}
-                    for idx in _SECTOR_INDICES],
+        'sectors': _sector_perf_from_stocks(),
     }
     rset('tase:indices', {**result, '_ts': time.time()}, ttl=300)
     return jsonify(result)
