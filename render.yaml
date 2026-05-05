@@ -1,0 +1,38 @@
+services:
+  # ── Flask web app ────────────────────────────────────────────────────
+  - type: web
+    name: tase-screener
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: REDIS_URL
+        sync: false          # Set in Render dashboard → your Upstash / Render Redis URL
+      - key: FMP_API_KEY
+        sync: false
+      - key: FINNHUB_API_KEY
+        sync: false
+      - key: MAYA_API_KEY
+        sync: false
+    autoDeploy: true
+
+  # ── Background data worker ───────────────────────────────────────────
+  - type: worker
+    name: tase-worker
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python worker.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: REDIS_URL
+        sync: false
+      - key: FMP_API_KEY
+        sync: false
+      - key: FINNHUB_API_KEY
+        sync: false
+      - key: MAYA_API_KEY
+        sync: false
+    autoDeploy: true
