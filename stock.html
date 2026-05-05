@@ -161,19 +161,19 @@
     html.peek-embed .peek-top-expand:hover { color: var(--text); border-color: var(--accent); }
     html.peek-embed .page-wrap { min-height: auto; display: block; }
     html.peek-embed #content { padding: 14px 16px 16px; max-width: none; width: 100%; }
-    html.peek-embed #sec-financials,
-    html.peek-embed #sec-statistics,
-    html.peek-embed #sec-analysts,
-    html.peek-embed #sec-news,
-    html.peek-embed #sec-peers { display: none !important; }
+    /* Show all sections in peek mode — user wants full detail with scroll */
     html.peek-embed #stock-header { margin-bottom: 10px; padding-bottom: 10px; }
     html.peek-embed .hdr-ticker { font-size: 20px; }
     html.peek-embed .hdr-name { font-size: 14px; }
     html.peek-embed .big-price { font-size: 24px; }
     html.peek-embed .big-chg { font-size: 14px; }
-    html.peek-embed #chart-wrap { height: 268px; }
+    html.peek-embed #chart-wrap { height: 240px; }
     html.peek-embed .desc-text,
     html.peek-embed .meta-row { display: none; }
+    /* Compact nav tabs in peek mode */
+    html.peek-embed .tab-btn { font-size: 11px; padding: 6px 10px; }
+    html.peek-embed .tear-sheet { font-size: 12px; }
+    html.peek-embed .fin-table { font-size: 11px; }
     .hdr-left .company-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
     .hdr-ticker { font-family: 'JetBrains Mono', monospace; font-size: 26px; font-weight: 800; color: var(--accent); }
     .hdr-name   { font-size: 18px; font-weight: 600; color: var(--text); }

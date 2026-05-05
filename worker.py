@@ -186,12 +186,30 @@ if __name__ == '__main__':
         print('[Worker] Missing "schedule" package. Run: pip install schedule', flush=True)
         sys.exit(1)
 
-    print('[Worker] Starting scheduler (fetch every 30 min, enrich every 24 hr)', flush=True)
+    print('[Worker] Starting scheduler (5 min during market hours, 60 min otherwise, enrich every 24 hr)', flush=True)
     run_full(enrich=True)  # immediate run on startup
 
-    schedule.every(30).minutes.do(run_fetch)
+    import datetime as _dt
+
+    def _smart_fetch():
+        """Fetch every 5 min during TASE market hours (09:30–17:30 IL, Sun–Thu), else every 60 min."""
+        now_il = _dt.datetime.utcnow() + _dt.timedelta(hours=3)  # UTC+3 approximation
+        weekday = now_il.weekday()  # Mon=0…Fri=4, Sat=5, Sun=6
+        in_market_week = weekday in (0, 1, 2, 3, 6)  # Sun=6, Mon-Thu=0-3
+        market_open  = now_il.replace(hour=9,  minute=30, second=0, microsecond=0)
+        market_close = now_il.replace(hour=17, minute=30, second=0, microsecond=0)
+        in_market_hours = in_market_week and (market_open <= now_il <= market_close)
+        return in_market_hours
+
+    last_fetch_ts = time.time()
     schedule.every(24).hours.do(run_enrichment)
 
     while True:
+        now = time.time()
+        in_hours = _smart_fetch()
+        interval = 300 if in_hours else 3600  # 5 min or 60 min
+        if now - last_fetch_ts >= interval:
+            run_fetch()
+            last_fetch_ts = time.time()
         schedule.run_pending()
         time.sleep(10)

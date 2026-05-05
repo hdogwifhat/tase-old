@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     :root {
       --bg:        #0a0a0b;
@@ -180,20 +181,21 @@
     .news-card-date  { font-size: 10px; color: var(--text3); margin-top: 5px; }
 
     /* ── Gainers / Losers panel ──────────────────────────────────────── */
-    .gl-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .gl-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .gl-cols > div { min-width: 0; overflow: hidden; }
     .gl-row {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 4px 0; border-bottom: 1px solid #0f0f14; gap: 6px;
-      font-size: 12px;
+      display: flex; align-items: center;
+      padding: 4px 0; border-bottom: 1px solid #0f0f14; gap: 5px;
+      font-size: 12px; min-width: 0;
     }
     .gl-row:last-child { border-bottom: none; }
     .gl-ticker { font-family: 'JetBrains Mono', monospace; font-weight: 700;
-                  font-size: 12px; color: var(--accent); cursor: pointer; }
+                  font-size: 11.5px; color: var(--accent); cursor: pointer; flex-shrink: 0; }
     .gl-ticker:hover { color: #60a5fa; }
-    .gl-name  { color: var(--text2); font-size: 11px; overflow: hidden;
-                 text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-    .gl-pct   { font-family: 'JetBrains Mono', monospace; font-size: 12px;
-                 font-weight: 700; white-space: nowrap; }
+    .gl-name  { color: var(--text2); font-size: 10.5px; overflow: hidden;
+                 text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+    .gl-pct   { font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+                 font-weight: 700; white-space: nowrap; flex-shrink: 0; margin-left: auto; }
     .gl-head  { font-size: 10px; font-weight: 700; color: var(--text3);
                  text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
 
@@ -234,19 +236,23 @@
       flex: 0 0 65%;
       max-width: 65%;
       min-width: 0;
-      min-height: 0;
       background: linear-gradient(180deg, #0c0c10 0%, var(--bg) 320px);
       display: flex;
       flex-direction: column;
       border-left: 1px solid var(--border2);
-      position: relative;
+      position: sticky;
+      top: 104px;
+      align-self: flex-start;
+      height: calc(100vh - 104px);
+      max-height: calc(100vh - 104px);
       z-index: 4;
       isolation: isolate;
+      overflow: hidden;
     }
     .peek-panel.hidden { display: none !important; }
     /* When peek is open, reflow home dashboard so panels don’t demand ~700px+ min width */
     body.peek-open .insight-shell {
-      grid-template-columns: minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       gap: 8px;
       padding-left: 10px;
       padding-right: 10px;
@@ -433,6 +439,11 @@
     thead th.col-ticker, thead th.col-name, thead th.col-sector { text-align: left; }
     thead th.col-ticker  { padding-left: 24px; }
     thead th.col-analyst_rating { text-align: center; }
+    .col-favorite { width: 28px; text-align: center !important; padding: 0 4px !important; }
+    thead th.col-favorite { text-align: center; width: 28px; padding: 0 4px; }
+    .fav-star { font-size: 14px; cursor: pointer; opacity: 0.25; transition: opacity 0.12s, color 0.12s; display: inline-block; line-height: 1; }
+    .fav-star:hover { opacity: 0.7; }
+    .fav-star.active { color: #f59e0b; opacity: 1; }
 
     /* Value types */
     .ticker {
@@ -481,9 +492,23 @@
       border-bottom: 1px solid var(--border);
       padding: 12px 24px 14px;
       display: grid;
-      grid-template-columns: minmax(200px, 1.2fr) minmax(180px, 1fr) minmax(150px, 0.8fr) minmax(180px, 1fr);
+      grid-template-columns: minmax(200px, 1fr) minmax(240px, 1.3fr) minmax(260px, 1.6fr);
       gap: 10px;
     }
+    /* Index chart panel */
+    .idx-chart-panel { display: flex; flex-direction: column; }
+    .idx-chart-toolbar {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap;
+    }
+    .idx-chart-btn {
+      font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 5px;
+      border: 1px solid var(--border2); background: var(--surface2); color: var(--text2);
+      cursor: pointer; font-family: inherit; transition: all 0.12s;
+    }
+    .idx-chart-btn:hover { border-color: var(--accent); color: var(--text); }
+    .idx-chart-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .idx-chart-sep { width: 1px; height: 14px; background: var(--border2); margin: 0 2px; flex-shrink: 0; }
+    #idx-chart-container { flex: 1; min-height: 160px; border-radius: 6px; overflow: hidden; background: #09090d; }
     .metric-strip {
       grid-column: 1 / -1;
       display: grid;
@@ -596,24 +621,27 @@
 
     /* ── Mini sector heatmap ─────────────────────────────────────────── */
     .mini-sector-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      display: flex;
+      flex-wrap: wrap;
       gap: 3px;
       flex: 1;
+      align-content: stretch;
+      align-items: stretch;
     }
     .mini-sector-block {
       border: 1px solid rgba(255,255,255,0.06);
       border-radius: 5px;
-      padding: 4px 5px;
+      padding: 5px 6px;
       display: flex; flex-direction: column; justify-content: space-between;
-      min-height: 34px;
+      min-height: 40px; min-width: 44px;
       cursor: pointer;
       transition: filter 0.12s, border-color 0.12s;
     }
     .mini-sector-block:hover { filter: brightness(1.2); border-color: rgba(255,255,255,0.22); }
     .mini-sector-name {
-      font-size: 8px; font-weight: 700; color: rgba(255,255,255,0.72);
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-size: 9px; font-weight: 700; color: rgba(255,255,255,0.82);
+      overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; line-height: 1.2;
     }
     .mini-sector-pct {
       font-size: 9px; font-weight: 700; color: #fff;
@@ -661,13 +689,12 @@
     @media (max-width: 1300px) {
       .insight-shell { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
     }
-    @media (max-width: 760px) {
+    @media (max-width: 900px) {
       .insight-shell { grid-template-columns: 1fr; }
       .metric-strip { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
-      /* Heatmap panel first among panels on mobile */
       .metric-strip  { order: 0; }
       .insight-panel { order: 2; }
-      .insight-panel.panel-heatmap { order: 1; } /* two-class beats one-class */
+      .insight-panel.panel-heatmap { order: 1; }
     }
     @media (max-width: 720px) {
       #site-header { padding: 0 14px; gap: 8px; }
@@ -768,6 +795,7 @@
   <button class="top-tab" data-view="valuation" onclick="openFocusView('valuation')">Value</button>
   <button class="top-tab" data-view="quality" onclick="openFocusView('quality')">Quality</button>
   <button class="top-tab" data-view="breadth" onclick="openFocusView('breadth')">Breadth</button>
+  <button class="top-tab" data-view="favorites" onclick="openFavoritesView()" id="tab-favorites">★ Favorites</button>
 </nav>
 
 <div id="split-work">
@@ -788,14 +816,24 @@
 <!-- ── Market bar ───────────────────────────────────────────────────────── -->
 <div id="market-bar">
   <div class="mkt-seg">
-    <span class="mkt-lbl">TA-35</span>
-    <span class="mkt-price" id="mkt-ta35">—</span>
-    <span id="mkt-ta35-chg"></span>
+    <span class="mkt-lbl">USD/ILS</span>
+    <span class="mkt-price" id="mkt-fx-rate">—</span>
+    <span id="mkt-fx-chg" class="mkt-chg"></span>
   </div>
-  <div class="mkt-seg">
-    <span class="mkt-lbl">TA-125</span>
-    <span class="mkt-price" id="mkt-ta125">—</span>
-    <span id="mkt-ta125-chg"></span>
+  <div class="mkt-seg" title="US 2-Year Treasury Yield (macro reference)">
+    <span class="mkt-lbl">US 2Y</span>
+    <span class="mkt-price" id="mkt-il2y">—</span>
+    <span style="color:var(--text3);font-size:10px">%</span>
+  </div>
+  <div class="mkt-seg" title="US 5-Year Treasury Yield (macro reference)">
+    <span class="mkt-lbl">US 5Y</span>
+    <span class="mkt-price" id="mkt-il5y">—</span>
+    <span style="color:var(--text3);font-size:10px">%</span>
+  </div>
+  <div class="mkt-seg" title="US 10-Year Treasury Yield (macro reference)">
+    <span class="mkt-lbl">US 10Y</span>
+    <span class="mkt-price" id="mkt-il10y">—</span>
+    <span style="color:var(--text3);font-size:10px">%</span>
   </div>
   <div class="mkt-seg">
     <span class="mkt-lbl">Volume</span>
@@ -807,11 +845,6 @@
     <span style="color:var(--text3);font-size:11px"> up &nbsp;</span>
     <span id="mkt-dec" class="mkt-down">—</span>
     <span style="color:var(--text3);font-size:11px"> dn</span>
-  </div>
-  <div class="mkt-seg">
-    <span class="mkt-lbl">IL 10Y</span>
-    <span class="mkt-price" id="mkt-il10y">—</span>
-    <span style="color:var(--text3);font-size:10px">%</span>
   </div>
 </div>
 
@@ -919,12 +952,20 @@
     </div>
   </div>
 
-  <div class="insight-panel" onclick="openFocusView('sectors')">
-    <div class="panel-head">
-      <div class="panel-title">Sector Leadership</div>
-      <div class="panel-sub">Cap weighted change</div>
+  <div class="insight-panel idx-chart-panel" style="cursor:default">
+    <div class="panel-head" style="margin-bottom:6px">
+      <div class="panel-title">Index Chart</div>
     </div>
-    <div class="sector-bars" id="sector-leaders"></div>
+    <div class="idx-chart-toolbar">
+      <button class="idx-chart-btn active" data-sym="TA35.TA" onclick="setIdxChartSym(this)">TA-35</button>
+      <button class="idx-chart-btn" data-sym="TA90.TA" onclick="setIdxChartSym(this)">TA-90</button>
+      <div class="idx-chart-sep"></div>
+      <button class="idx-chart-btn" data-range="5d"  onclick="setIdxChartRange(this)">5D</button>
+      <button class="idx-chart-btn active" data-range="1mo" onclick="setIdxChartRange(this)">1M</button>
+      <button class="idx-chart-btn" data-range="3mo" onclick="setIdxChartRange(this)">3M</button>
+      <button class="idx-chart-btn" data-range="1y"  onclick="setIdxChartRange(this)">1Y</button>
+    </div>
+    <div id="idx-chart-container"></div>
   </div>
 
   <div class="insight-panel panel-heatmap" onclick="openFocusView('heatmap')" style="display:flex;flex-direction:column;cursor:pointer">
@@ -933,16 +974,7 @@
       <div class="panel-sub" style="font-size:9px">click to expand</div>
     </div>
     <div class="mini-sector-grid" id="mini-sector-grid"></div>
-    <div class="mini-heatmap-hint">1 block = 1 sector · color = daily chg</div>
-  </div>
-
-  <div class="insight-panel" onclick="openFocusView('scatter')">
-    <div class="panel-head">
-      <div class="panel-title">Value vs Quality</div>
-      <div class="panel-sub">EV/EBITDA x ROE</div>
-    </div>
-    <div class="scatter-wrap" id="quality-scatter"></div>
-    <div class="scatter-axis"><span>Cheaper</span><span>Higher ROE</span></div>
+    <div class="mini-heatmap-hint">1 block = 1 sector · size = market cap · color = daily chg</div>
   </div>
 </section>
 
@@ -1009,6 +1041,7 @@
 // Columns
 // ═══════════════════════════════════════════════════════════════════════
 const COLUMNS = [
+  { id:'favorite',       label:'★',            defaultOn:true,  locked:true },
   { id:'ticker',         label:'Ticker',       defaultOn:true,  locked:true },
   { id:'name',           label:'Company',      defaultOn:true,  locked:true },
   { id:'price',          label:'Price',        defaultOn:true  },
@@ -1179,8 +1212,41 @@ function sparkSVG(prices, w=80, h=28) {
 // ═══════════════════════════════════════════════════════════════════════
 // Cell renderer
 // ═══════════════════════════════════════════════════════════════════════
+// ── Favorites ────────────────────────────────────────────────────────
+let _favs = new Set(JSON.parse(localStorage.getItem('tase-favorites') || '[]'));
+function _saveFavs() { localStorage.setItem('tase-favorites', JSON.stringify([..._favs])); }
+function toggleFav(ticker, el) {
+  if (_favs.has(ticker)) { _favs.delete(ticker); if (el) { el.classList.remove('active'); el.title = 'Add to favorites'; } }
+  else { _favs.add(ticker); if (el) { el.classList.add('active'); el.title = 'Remove from favorites'; } }
+  _saveFavs();
+  document.getElementById('tab-favorites').textContent = `★ Favorites${_favs.size ? ' ('+_favs.size+')' : ''}`;
+}
+function openFavoritesView() {
+  focusMode = 'favorites';
+  setActiveTopTab('favorites');
+  closeStockPeek();
+  document.getElementById('insight-shell').classList.add('hidden');
+  document.getElementById('focus-view').classList.add('hidden');
+  document.querySelector('.table-wrap').classList.remove('hidden');
+  document.querySelector('.table-caption').classList.remove('hidden');
+  document.getElementById('table-back').classList.remove('hidden');
+  document.getElementById('view-title').textContent = '★ Favorites';
+  const favRows = allStocks.filter(s => _favs.has(s.ticker));
+  currentRows = favRows;
+  document.getElementById('view-summary').textContent = favRows.length
+    ? `${favRows.length} starred stocks`
+    : 'Click ★ next to any stock to add it here';
+  _scheduleVirtRender();
+}
+// ── /Favorites ────────────────────────────────────────────────────────
+
 function renderCell(s, id) {
   switch(id) {
+    case 'favorite': {
+      const active = _favs.has(s.ticker) ? 'active' : '';
+      const title  = _favs.has(s.ticker) ? 'Remove from favorites' : 'Add to favorites';
+      return `<td class="col-favorite"><span class="fav-star ${active}" title="${title}" onclick="event.stopPropagation();toggleFav('${s.ticker}',this)">★</span></td>`;
+    }
     case 'ticker':
       return `<td class="col-ticker"><span class="ticker" onclick="gotoStock('${s.ticker}')">${s.ticker}</span></td>`;
     case 'name':
@@ -1394,6 +1460,8 @@ function onFI() {
 }
 
 function applyFilters() {
+  // Favorites mode: re-filter favorites list and skip normal pipeline
+  if (focusMode === 'favorites') { openFavoritesView(); return; }
   const q      = document.getElementById('f-search').value.toLowerCase();
   const peMax  = parseFloat(document.getElementById('f-pe-max').value);
   const psMax  = parseFloat(document.getElementById('f-ps-max').value);
@@ -1502,9 +1570,9 @@ function renderDashboard(data) {
   document.getElementById('view-summary').textContent = `${rows.length} rows, sorted by ${sortedLabel}`;
 
   renderGainersLosers(rows);
-  renderSectorLeaders(rows);
-  renderQualityScatter(rows);
   renderMiniSectorHeatmap(rows);
+  // Initialize index chart on first render
+  if (!_idxChart) requestAnimationFrame(() => { _initIdxChart(); _loadIdxChartData(); });
 }
 
 function renderShortlistPanel(rows) {
@@ -1569,7 +1637,7 @@ function renderMiniSectorHeatmap(rows) {
   if (!el) return;
   const groups = sectorGroups(rows).filter(g => g.count > 0).slice(0, 12);
   if (!groups.length) { el.innerHTML = '<div class="empty-focus" style="font-size:10px">No data</div>'; return; }
-  const words = name => name.replace(/[^A-Za-z\s]/g, '').trim().split(/\s+/);
+  const totalCap = groups.reduce((s, g) => s + g.cap, 0) || 1;
   el.innerHTML = groups.map(g => {
     const intensity = Math.min(Math.abs(g.avg) / 5, 1);
     const bg = g.avg > 0
@@ -1577,10 +1645,10 @@ function renderMiniSectorHeatmap(rows) {
       : g.avg < 0 ? `rgba(239,68,68,${(0.22 + intensity * 0.62).toFixed(2)})`
       : 'rgba(82,82,91,0.32)';
     const sign = g.avg > 0 ? '+' : '';
-    const w = words(g.name);
-    const abbr = w.length > 1 ? w.map(x => x[0]).join('').slice(0, 4).toUpperCase() : g.name.slice(0, 4).toUpperCase();
-    return `<div class="mini-sector-block" style="background:${bg}" title="${esc(g.name)} · ${sign}${g.avg.toFixed(2)}% · ${g.count} stocks">
-      <div class="mini-sector-name">${esc(abbr)}</div>
+    const basis = Math.max(44, Math.round(Math.sqrt(g.cap / totalCap) * 220));
+    return `<div class="mini-sector-block" style="background:${bg};flex:1 1 ${basis}px" title="${esc(g.name)} · ${sign}${g.avg.toFixed(2)}% · ${g.count} stocks"
+      onclick="setPill('');document.getElementById('f-search').value='${esc(g.name)}';applyFilters()">
+      <div class="mini-sector-name">${esc(g.name)}</div>
       <div class="mini-sector-pct">${sign}${g.avg.toFixed(1)}%</div>
     </div>`;
   }).join('');
@@ -1610,58 +1678,112 @@ function sectorGroups(rows) {
     .sort((a,b) => b.cap - a.cap);
 }
 
+// ── Binary treemap (splits rectangle recursively by balancing value sums) ──
+function _tmSplit(items, x, y, w, h, out) {
+  if (!items.length) return;
+  if (items.length === 1) { out.push({item: items[0], x, y, w, h}); return; }
+  const total = items.reduce((s, i) => s + i.value, 0);
+  if (!total) { items.forEach((item, i) => out.push({item, x: x + i*w/items.length, y, w: w/items.length, h})); return; }
+  // Find split point that balances areas most evenly
+  let bestIdx = 1, bestDiff = Infinity, acc = 0;
+  for (let i = 0; i < items.length - 1; i++) {
+    acc += items[i].value;
+    const diff = Math.abs(acc / total - 0.5);
+    if (diff < bestDiff) { bestDiff = diff; bestIdx = i + 1; }
+  }
+  const aItems = items.slice(0, bestIdx);
+  const bItems = items.slice(bestIdx);
+  const aSum = aItems.reduce((s, i) => s + i.value, 0);
+  const frac = aSum / total;
+  if (w >= h) {
+    const wA = Math.floor(w * frac), wB = w - wA;
+    _tmSplit(aItems, x,      y, wA, h, out);
+    _tmSplit(bItems, x + wA, y, wB, h, out);
+  } else {
+    const hA = Math.floor(h * frac), hB = h - hA;
+    _tmSplit(aItems, x, y,      w, hA, out);
+    _tmSplit(bItems, x, y + hA, w, hB, out);
+  }
+}
+
 function renderMarketHeatmap(rows, targetId, opts={}) {
   const el = document.getElementById(targetId);
   if (!el) return;
   const compact = !!opts.compact;
-  const groups  = sectorGroups(rows).filter(g => g.cap || g.count).slice(0, compact ? 8 : 30);
-  el.classList.toggle('full', !compact);
+  const groups  = sectorGroups(rows).filter(g => g.cap > 0).slice(0, compact ? 12 : 30);
 
   if (!groups.length) {
     el.innerHTML = '<div class="empty-focus">No stocks available for the heatmap.</div>';
     return;
   }
 
-  // Sector flex-basis proportional to total sector market cap (FinViz-style)
-  const totalAllCap = groups.reduce((s, g) => s + g.cap, 0) || 1;
-  const FULL_W = compact ? 700 : 1600;
+  const GAP = 3;
+  const W = el.clientWidth || el.offsetWidth || el.parentElement?.clientWidth || 900;
+  const focusEl = document.getElementById('focus-view');
+  const H = compact
+    ? Math.min(500, window.innerHeight * 0.45)
+    : Math.max(500, (focusEl ? focusEl.clientHeight - 80 : window.innerHeight - 260));
 
-  el.innerHTML = groups.map(g => {
-    const sectorBasis = Math.max(compact ? 110 : 160,
-                                  Math.round(g.cap / totalAllCap * FULL_W));
+  el.style.cssText = `position:relative;width:100%;height:${H}px;overflow:hidden`;
 
-    // Within-sector: tile size relative to the LARGEST stock in this sector
-    const sectorStocks = [...g.stocks]
-      .sort((a,b) => (Number(b.market_cap)||0) - (Number(a.market_cap)||0))
-      .slice(0, compact ? 12 : 60);
-    const sectorMaxCap = Math.max(...sectorStocks.map(s => Number(s.market_cap)||0), 1);
+  // --- Sector treemap ---
+  const sectorItems = groups.map(g => ({ value: g.cap, g }));
+  const sectorRects = [];
+  _tmSplit(sectorItems, 0, 0, W, H, sectorRects);
 
+  let html = '';
+  for (const { item: si, x: sx, y: sy, w: sw, h: sh } of sectorRects) {
+    const g    = si.g;
     const sign = g.avg > 0 ? '+' : '';
-    const tiles = sectorStocks.map(s => {
-      const cap   = Number(s.market_cap) || 0;
-      // sqrt scaling within sector — min 36px compact / 44px full, max 130px / 220px
-      const ratio = Math.sqrt(cap / sectorMaxCap);
-      const basis = clamp(ratio * (compact ? 100 : 180),
-                          compact ? 36 : 44,
-                          compact ? 130 : 220);
-      const chg = Number(s.change_pct) || 0;
-      const sg  = chg > 0 ? '+' : '';
-      return `<div class="stock-tile" style="--basis:${basis}px;background:${heatColor(chg)}"
-        title="${esc(s.name)} | ${fmtLarge(cap).replace(/<[^>]+>/g,'')} | ${sg}${chg.toFixed(2)}%"
-        onclick="event.stopPropagation();gotoStock('${s.ticker}')">
-        <div class="tile-ticker">${esc(s.ticker)}</div>
-        <div class="tile-change">${sg}${chg.toFixed(2)}%</div>
-      </div>`;
-    }).join('');
+    const HEAD = compact ? 18 : 22;
+    const innerW = Math.max(0, sw - GAP * 2);
+    const innerH = Math.max(0, sh - HEAD - GAP * 2);
 
-    return `<section class="heat-sector" style="--sector-basis:${sectorBasis}px">
-      <div class="heat-sector-head">
-        <span class="heat-sector-name">${esc(g.name)}</span>
-        <span class="heat-sector-meta">${g.count} · ${sign}${g.avg.toFixed(2)}%</span>
+    // --- Stock treemap inside sector ---
+    const stocks = [...g.stocks]
+      .sort((a, b) => (Number(b.market_cap) || 0) - (Number(a.market_cap) || 0))
+      .slice(0, compact ? 15 : 40)
+      .filter(s => (Number(s.market_cap) || 0) > 0);
+
+    let stockHtml = '';
+    if (stocks.length && innerW > 20 && innerH > 20) {
+      const stockItems = stocks.map(s => ({ value: Number(s.market_cap) || 0, s }));
+      const stockRects = [];
+      _tmSplit(stockItems, 0, 0, innerW, innerH, stockRects);
+      stockHtml = stockRects.map(({ item: si2, x: tx, y: ty, w: tw, h: th }) => {
+        const s   = si2.s;
+        const chg = Number(s.change_pct) || 0;
+        const sg  = chg > 0 ? '+' : '';
+        const showText = tw >= 28 && th >= 22;
+        const showPct  = tw >= 36 && th >= 38;
+        return `<div onclick="event.stopPropagation();gotoStock('${s.ticker}')"
+          title="${esc(s.name)} · ${sg}${chg.toFixed(2)}%"
+          style="position:absolute;left:${tx}px;top:${ty}px;width:${tw}px;height:${th}px;
+                 background:${heatColor(chg)};border:1px solid rgba(0,0,0,0.35);
+                 box-sizing:border-box;cursor:pointer;overflow:hidden;
+                 display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+                 transition:filter 0.12s" onmouseover="this.style.filter='brightness(1.2)'" onmouseout="this.style.filter=''">
+          ${showText ? `<div style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:${tw>60?13:10}px;color:#fff;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90%;line-height:1.1">${esc(s.ticker)}</div>` : ''}
+          ${showPct  ? `<div style="font-size:${tw>60?11:9}px;font-weight:700;color:rgba(255,255,255,0.9);font-family:'JetBrains Mono',monospace">${sg}${chg.toFixed(2)}%</div>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    html += `<div style="position:absolute;left:${sx+GAP}px;top:${sy+GAP}px;width:${sw-GAP*2}px;height:${sh-GAP*2}px;
+               background:#09090d;border:1px solid rgba(255,255,255,0.08);border-radius:4px;overflow:hidden"
+               onclick="setPill('');document.getElementById('f-search').value='${jsStr(g.name)}';applyFilters()">
+      <div style="height:${HEAD}px;padding:0 6px;display:flex;align-items:center;justify-content:space-between;
+                  background:rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.06);gap:4px;flex-shrink:0;overflow:hidden">
+        <span style="font-size:${compact?9:10}px;font-weight:700;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.name)}</span>
+        <span style="font-size:${compact?9:10}px;font-weight:700;font-family:'JetBrains Mono',monospace;color:${g.avg>0?'var(--green)':g.avg<0?'var(--red)':'var(--text3)'};white-space:nowrap">${sign}${g.avg.toFixed(2)}%</span>
       </div>
-      <div class="heat-tiles">${tiles}</div>
-    </section>`;
-  }).join('');
+      <div style="position:relative;width:${innerW}px;height:${innerH}px;overflow:hidden">
+        ${stockHtml}
+      </div>
+    </div>`;
+  }
+
+  el.innerHTML = html;
 }
 
 function focusShell(title, sub, body) {
@@ -1747,6 +1869,7 @@ function openFocusView(kind) {
 }
 
 function renderFocusContent(kind) {
+  if (kind === 'favorites') { openFavoritesView(); return; }
   const rows = currentRows.length ? currentRows : allStocks;
   const focus = document.getElementById('focus-view');
   const cap = rows.reduce((a,s) => a + (Number(s.market_cap) || 0), 0);
@@ -1858,8 +1981,9 @@ function renderFocusContent(kind) {
 
   if (kind === 'heatmap') {
     focus.innerHTML = focusShell('Market Heatmap', 'Grouped by sector. Tile size = market cap, color = daily price change',
-      '<div id="full-heatmap" class="market-heatmap full"></div>');
-    renderMarketHeatmap(rows, 'full-heatmap', {compact: false});
+      '<div id="full-heatmap" style="width:100%;"></div>');
+    // Defer until layout is painted so clientWidth/clientHeight are non-zero
+    requestAnimationFrame(() => renderMarketHeatmap(rows, 'full-heatmap', {compact: false}));
   }
 }
 
@@ -1868,25 +1992,84 @@ function renderFocusContent(kind) {
 // ═══════════════════════════════════════════════════════════════════════
 async function loadMarketBar() {
   try {
-    const d = await (await fetch('/api/market')).json();
-    if (d.error) return;
-    const mk = (obj, idP, idC) => {
-      if (!obj?.price) return;
-      document.getElementById(idP).textContent = obj.price.toLocaleString('en-US',{maximumFractionDigits:2});
-      const el = document.getElementById(idC);
-      if (obj.change_pct != null) {
-        const s = obj.change_pct>0?'+':'';
-        el.className = 'mkt-chg ' + (obj.change_pct>0?'mkt-up':obj.change_pct<0?'mkt-down':'');
-        el.textContent = `${s}${obj.change_pct.toFixed(2)}%`;
+    const [mkt, fx] = await Promise.all([
+      fetch('/api/market').then(r => r.json()),
+      fetch('/api/fx').then(r => r.json()),
+    ]);
+    if (!mkt.error) {
+      if (mkt.il2y)  document.getElementById('mkt-il2y').textContent  = mkt.il2y.toFixed(2);
+      if (mkt.il5y)  document.getElementById('mkt-il5y').textContent  = mkt.il5y.toFixed(2);
+      if (mkt.il10y) document.getElementById('mkt-il10y').textContent = mkt.il10y.toFixed(2);
+      if (mkt.vol_total) document.getElementById('mkt-vol').textContent = fmtLargeRaw(mkt.vol_total);
+      document.getElementById('mkt-adv').textContent = mkt.advancing ?? '—';
+      document.getElementById('mkt-dec').textContent = mkt.declining ?? '—';
+    }
+    if (!fx.error && fx.ils_per_usd) {
+      document.getElementById('mkt-fx-rate').textContent = fx.ils_per_usd.toFixed(4);
+      if (fx.change_pct != null) {
+        const el = document.getElementById('mkt-fx-chg');
+        const s = fx.change_pct > 0 ? '+' : '';
+        el.className = 'mkt-chg ' + (fx.change_pct > 0 ? 'mkt-up' : fx.change_pct < 0 ? 'mkt-down' : '');
+        el.textContent = `${s}${fx.change_pct.toFixed(3)}%`;
       }
-    };
-    mk(d.ta35,  'mkt-ta35',  'mkt-ta35-chg');
-    mk(d.ta125, 'mkt-ta125', 'mkt-ta125-chg');
-    if (d.vol_total) document.getElementById('mkt-vol').textContent = fmtLargeRaw(d.vol_total);
-    document.getElementById('mkt-adv').textContent = d.advancing ?? '—';
-    document.getElementById('mkt-dec').textContent = d.declining ?? '—';
-    if (d.il10y) document.getElementById('mkt-il10y').textContent = d.il10y.toFixed(2);
+    }
   } catch {}
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Interactive index chart (replaces Sector Leadership panel)
+// ═══════════════════════════════════════════════════════════════════════
+let _idxChart = null, _idxSeries = null;
+let _idxSym   = 'TA35.TA';
+let _idxRange  = '1mo';
+
+function _initIdxChart() {
+  const cont = document.getElementById('idx-chart-container');
+  if (!cont) return;
+  if (_idxChart) { _idxChart.remove(); _idxChart = null; }
+  const h = Math.max(cont.offsetHeight || 0, 140);
+  _idxChart = LightweightCharts.createChart(cont, {
+    width:  cont.offsetWidth || 300,
+    height: h,
+    layout: { background: { color: '#09090d' }, textColor: '#71717a' },
+    grid:   { vertLines: { color: '#1a1a22' }, horzLines: { color: '#1a1a22' } },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Magnet },
+    rightPriceScale: { borderColor: '#1f1f28' },
+    timeScale: { borderColor: '#1f1f28', timeVisible: true, secondsVisible: false },
+    handleScroll: false, handleScale: false,
+  });
+  _idxSeries = _idxChart.addAreaSeries({
+    lineColor: '#0066cc', topColor: 'rgba(0,102,204,0.28)', bottomColor: 'rgba(0,102,204,0.02)',
+    lineWidth: 2,
+  });
+  const ro = new ResizeObserver(() => {
+    if (_idxChart && cont.offsetWidth > 0)
+      _idxChart.applyOptions({ width: cont.offsetWidth, height: Math.max(cont.offsetHeight, 140) });
+  });
+  ro.observe(cont);
+}
+
+async function _loadIdxChartData() {
+  if (!_idxChart) _initIdxChart();
+  if (!_idxSeries) return;
+  try {
+    const d = await fetch(`/api/index_history?sym=${encodeURIComponent(_idxSym)}&range=${_idxRange}`).then(r => r.json());
+    if (!d.bars || !d.bars.length) return;
+    const data = d.bars.map(b => ({ time: b.time, value: b.value }));
+    _idxSeries.setData(data);
+    _idxChart.timeScale().fitContent();
+  } catch {}
+}
+
+function setIdxChartSym(btn) {
+  _idxSym = btn.dataset.sym;
+  btn.closest('.idx-chart-toolbar').querySelectorAll('[data-sym]').forEach(b => b.classList.toggle('active', b === btn));
+  _loadIdxChartData();
+}
+function setIdxChartRange(btn) {
+  _idxRange = btn.dataset.range;
+  btn.closest('.idx-chart-toolbar').querySelectorAll('[data-range]').forEach(b => b.classList.toggle('active', b === btn));
+  _loadIdxChartData();
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -2038,7 +2221,8 @@ function gotoStock(ticker) {
   const exp = document.getElementById('peek-expand-link');
   exp.href = `/stock/${sym}`;
   document.getElementById('peek-frame').src = `/stock/${sym}?peek=1`;
-  _scheduleVirtRender();
+  // Do NOT call _scheduleVirtRender here — it would reset scroll position
+  // Only trigger a resize so LightweightCharts inside peek can measure itself
   window.dispatchEvent(new Event('resize'));
 }
 
@@ -2060,7 +2244,17 @@ let ilsPerUsd = 3.65;  // fallback; updated from /api/fx
 async function loadFX() {
   try {
     const d = await (await fetch('/api/fx')).json();
-    if (d.ils_per_usd) ilsPerUsd = d.ils_per_usd;
+    if (d.ils_per_usd) {
+      ilsPerUsd = d.ils_per_usd;
+      const rateEl = document.getElementById('usd-rate');
+      if (rateEl) rateEl.textContent = d.ils_per_usd.toFixed(4);
+      const chgEl = document.getElementById('usd-chg');
+      if (chgEl && d.change_pct != null) {
+        const s = d.change_pct > 0 ? '+' : '';
+        chgEl.className = 'usd-chg ' + (d.change_pct > 0 ? 'mkt-up' : d.change_pct < 0 ? 'mkt-down' : '');
+        chgEl.textContent = `${s}${d.change_pct.toFixed(3)}%`;
+      }
+    }
   } catch {}
 }
 
@@ -2179,11 +2373,16 @@ function renderGainersLosers(rows) {
   const gainers = [...withChg].sort((a,b) => b.change_pct - a.change_pct).slice(0,5);
   const losers  = [...withChg].sort((a,b) => a.change_pct - b.change_pct).slice(0,5);
 
-  const row = s => `<div class="gl-row">
-    <span class="gl-ticker" onclick="event.stopPropagation();gotoStock('${s.ticker}')">${esc(s.ticker)}</span>
-    <span class="gl-name" title="${esc(s.name)}">${esc(s.name)}</span>
-    <span class="gl-pct ${s.change_pct>0?'pos':'neg'}">${s.change_pct>0?'+':''}${s.change_pct.toFixed(2)}%</span>
-  </div>`;
+  const truncName = (name, max=14) => name && name.length > max ? name.slice(0, max) + '…' : name;
+  const row = s => {
+    const pctCls = s.change_pct > 0 ? 'pos' : 'neg';
+    const sign   = s.change_pct > 0 ? '+' : '';
+    return `<div class="gl-row">
+      <span class="gl-ticker" onclick="event.stopPropagation();gotoStock('${s.ticker}')">${esc(s.ticker)}</span>
+      <span class="gl-name" title="${esc(s.name)}">${esc(truncName(s.name))}</span>
+      <span class="gl-pct ${pctCls}">${sign}${s.change_pct.toFixed(2)}%</span>
+    </div>`;
+  };
 
   const gEl = document.getElementById('gl-gainers');
   const lEl = document.getElementById('gl-losers');
@@ -2232,20 +2431,7 @@ async function loadIndices() {
   } catch(e) { console.warn('loadIndices', e); }
 }
 
-// Patch loadFX to also update the indices strip USD box
-const _origLoadFX = loadFX;
-async function loadFX() {
-  try {
-    const d = await (await fetch('/api/fx')).json();
-    if (d.ils_per_usd) {
-      ilsPerUsd = d.ils_per_usd;
-      const rateEl = document.getElementById('usd-rate');
-      const chgEl  = document.getElementById('usd-chg');
-      if (rateEl) rateEl.textContent = d.ils_per_usd.toFixed(4);
-      // No daily change from /api/fx currently — leave blank
-    }
-  } catch {}
-}
+// (loadFX is defined below — merged with the indices-strip USD update)
 
 // ═══════════════════════════════════════════════════════════════════════
 // Israeli market news feed
@@ -2282,13 +2468,19 @@ window.addEventListener('message', e => {
   if (e.data && e.data.type === 'tase-close-peek') closeStockPeek();
 });
 
+// Init favorites tab count
+(function() {
+  if (_favs.size) document.getElementById('tab-favorites').textContent = `★ Favorites (${_favs.size})`;
+})();
+
 loadFX();
 loadIndices();
+loadMarketBar();
 loadMarketNews();
 loadData(false);
 setInterval(() => loadData(false), 30*60*1000);
 setInterval(loadMarketBar, 5*60*1000);
-setInterval(loadIndices, 5*60*1000);
+setInterval(loadIndices,   5*60*1000);
 </script>
 </body>
 </html>

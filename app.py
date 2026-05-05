@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, send_from_directory, request
 import yfinance as yf
-import json, os, time, math
+import json, os, time, math, threading
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,6 +18,28 @@ from redis_client import rget, rset, rttl, is_available
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app      = Flask(__name__, static_folder=BASE_DIR)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+_refresh_lock = threading.Lock()
+
+def _background_refresh():
+    """Fetch fresh stock data in a background thread and write to Redis/file."""
+    if not _refresh_lock.acquire(blocking=False):
+        return
+    try:
+        import sys
+        sys.path.insert(0, BASE_DIR)
+        from worker import fetch_stocks, STOCK_TTL
+        stocks = fetch_stocks()
+        if stocks:
+            payload = {'data': stocks, 'timestamp': time.time()}
+            rset('tase:stocks', payload, ttl=STOCK_TTL)
+            with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(payload, f)
+            print('[App] Background refresh complete.', flush=True)
+    except Exception as e:
+        print(f'[App] Background refresh error: {e}', flush=True)
+    finally:
+        _refresh_lock.release()
 
 CACHE_FILE   = os.path.join(BASE_DIR, 'tase_cache.json')
 ENRICH_FILE  = os.path.join(BASE_DIR, 'enrich_cache.json')
@@ -125,27 +147,30 @@ def _parse_fin_df(df):
         return {'years': [], 'rows': []}
 
 
-def _fetch_news(bare_ticker):
-    """Finnhub first (better data when available), yfinance fallback for TASE coverage."""
+def _fetch_news(bare_ticker, company_name=''):
+    """Multi-source news: Finnhub (bare + .TA), yfinance, RSS cache, Google News fallback."""
     news = []
     key = os.getenv('FINNHUB_API_KEY', '')
     if key:
         from datetime import datetime, timedelta
         to_d   = datetime.now().strftime('%Y-%m-%d')
         from_d = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
-        try:
-            r = _req_mod.get('https://finnhub.io/api/v1/company-news',
-                             params={'symbol': bare_ticker, 'from': from_d, 'to': to_d, 'token': key},
-                             timeout=10)
-            if r.status_code == 200:
-                items = r.json()
-                if isinstance(items, list):
-                    news = [{'headline': i.get('headline', ''), 'source': i.get('source', ''),
-                             'url': i.get('url', ''), 'datetime': i.get('datetime', 0),
-                             'summary': (i.get('summary') or '')[:200]}
-                            for i in items[:10] if i.get('headline')]
-        except Exception:
-            pass
+        for sym in [bare_ticker, bare_ticker + ':IL']:
+            if news:
+                break
+            try:
+                r = _req_mod.get('https://finnhub.io/api/v1/company-news',
+                                 params={'symbol': sym, 'from': from_d, 'to': to_d, 'token': key},
+                                 timeout=10)
+                if r.status_code == 200:
+                    items = r.json()
+                    if isinstance(items, list):
+                        news = [{'headline': i.get('headline', ''), 'source': i.get('source', ''),
+                                 'url': i.get('url', ''), 'datetime': i.get('datetime', 0),
+                                 'summary': (i.get('summary') or '')[:200]}
+                                for i in items[:10] if i.get('headline')]
+            except Exception:
+                pass
 
     if not news:
         try:
@@ -158,16 +183,44 @@ def _fetch_news(bare_ticker):
                     for n in yf_items[:10] if n.get('title')]
         except Exception:
             pass
+
+    # Try matching against cached RSS market news
+    if not news and company_name:
+        try:
+            cached = rget('tase:market_news')
+            if cached:
+                rss_items = cached.get('items', [])
+                name_lower = company_name.lower()
+                ticker_lower = bare_ticker.lower()
+                matched = [i for i in rss_items
+                           if ticker_lower in i.get('title', '').lower()
+                           or name_lower[:8] in i.get('title', '').lower()]
+                news = [{'headline': i.get('title', ''), 'source': i.get('source', ''),
+                         'url': i.get('url', ''), 'datetime': 0, 'summary': i.get('summary', '')}
+                        for i in matched[:10]]
+        except Exception:
+            pass
+
+    # Google News fallback — always show something
+    if not news:
+        from urllib.parse import quote as _url_quote
+        search_name = company_name or bare_ticker
+        google_url = f'https://news.google.com/search?q={_url_quote(search_name)}+stock'
+        news = [{'headline': f'Search news for {search_name}',
+                 'source': 'Google News',
+                 'url': google_url,
+                 'datetime': 0,
+                 'summary': 'No direct news found — click to search Google News.'}]
     return news
 
 
 # ── TASE indices ──────────────────────────────────────────────────────────────
 
 _MAIN_INDICES = [
-    {'label': 'TA-35',  'sym': 'TA35.TA'},
-    {'label': 'TA-125', 'sym': 'TA125.TA'},
-    {'label': 'TA-90',  'sym': 'TA90.TA'},
-    {'label': 'SME-60', 'sym': 'MIDCAP50.TA'},
+    {'label': 'TA-35',  'sym': 'TA35.TA',     'tase_id': 142},
+    {'label': 'TA-125', 'sym': '195.TA',       'tase_id': 137},  # 195.TA = TA125-Value ETF; TA125.TA broken on Yahoo
+    {'label': 'TA-90',  'sym': 'TA90.TA',      'tase_id': 168},
+    {'label': 'SME-60', 'sym': 'MIDCAP50.TA',  'tase_id': 164},
 ]
 
 _SECTOR_INDICES = [
@@ -181,13 +234,27 @@ _SECTOR_INDICES = [
 
 
 def _fetch_index_quote(sym=None, tase_id=None):
-    """Return {price, change_pct} for a TASE index/ETF."""
+    """Return {price, change_pct} for a TASE index/ETF.
+    Priority: yfinance history (5d) → yfinance fast_info → TASE API.
+    """
     if sym:
+        # Try multi-bar history first (gives accurate daily change)
         try:
             h = yf.Ticker(sym).history(period='5d', interval='1d')
             if len(h) >= 2:
                 prev = float(h['Close'].iloc[-2])
                 curr = float(h['Close'].iloc[-1])
+                return {'price': round(curr, 2),
+                        'change_pct': round((curr - prev) / prev * 100, 2)}
+        except Exception:
+            pass
+
+        # fast_info fallback — works even when history is restricted to 1 bar
+        try:
+            fi = yf.Ticker(sym).fast_info
+            curr = float(fi.last_price)
+            prev = float(fi.previous_close)
+            if curr and prev:
                 return {'price': round(curr, 2),
                         'change_pct': round((curr - prev) / prev * 100, 2)}
         except Exception:
@@ -202,7 +269,8 @@ def _fetch_index_quote(sym=None, tase_id=None):
             try:
                 r = _req_mod.get(url, timeout=8,
                                  headers={'Accept': 'application/json',
-                                          'Referer': 'https://market.tase.co.il/'})
+                                          'Referer': 'https://market.tase.co.il/',
+                                          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
                 if r.status_code == 200:
                     d = r.json()
                     price  = (d.get('lastPrice') or d.get('price') or
@@ -263,7 +331,13 @@ def fetch_stock_detail(ticker):
     income   = _parse_fin_df(stock.financials)
     balance  = _parse_fin_df(stock.balance_sheet)
     cashflow = _parse_fin_df(stock.cashflow)
-    news     = _fetch_news(ticker)
+
+    try:
+        enrich_data_pre = _enrich_from_redis_or_file()
+        _company_name = (enrich_data_pre.get(ticker) or {}).get('name', '')
+    except Exception:
+        _company_name = ''
+    news = _fetch_news(ticker, _company_name)
 
     try:
         tfin = tase_fin(ticker)
@@ -333,8 +407,11 @@ def _fetch_market_data():
 
     ta35  = idx_info('^TA35')
     ta125 = idx_info('^TA125')
-    il10y = bond_yield('IL10Y=X') or bond_yield('^TNX')
-    il2y  = bond_yield('IL02Y=X')
+    # Israeli government bond yields are not available via free APIs.
+    # ^TNX=US 10Y, ^FVX=US 5Y, ^IRX=US 13-week — used as global macro reference.
+    il10y = bond_yield('^TNX')
+    il5y  = bond_yield('^FVX')
+    il2y  = bond_yield('^IRX')
 
     stocks, _ = _stocks_from_redis_or_file()
     vol_total = sum(s.get('volume') or 0 for s in stocks)
@@ -343,7 +420,7 @@ def _fetch_market_data():
 
     return {'ta35': ta35, 'ta125': ta125, 'vol_total': vol_total,
             'advancing': advancing, 'declining': declining,
-            'il10y': il10y, 'il2y': il2y}
+            'il10y': il10y, 'il2y': il2y, 'il5y': il5y}
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -374,6 +451,9 @@ def stocks():
     age     = time.time() - ts if ts else None
     ttl_val = rttl('tase:stocks')
     stale   = (ttl_val is not None and ttl_val < 60) or (age and age > 1800)
+
+    if stale and not _refresh_lock.locked():
+        threading.Thread(target=_background_refresh, daemon=True).start()
 
     merged = merge_enrichment(data)
     return jsonify({
@@ -435,7 +515,7 @@ def indices():
     if cached and cached.get('_ts') and (time.time() - cached['_ts']) < 300:
         return jsonify({k: v for k, v in cached.items() if k != '_ts'})
     result = {
-        'main':    [{**idx, **_fetch_index_quote(idx['sym'])} for idx in _MAIN_INDICES],
+        'main':    [{**idx, **_fetch_index_quote(idx['sym'], idx.get('tase_id'))} for idx in _MAIN_INDICES],
         'sectors': [{**idx, **_fetch_index_quote(idx.get('sym'), idx.get('tase_id'))}
                     for idx in _SECTOR_INDICES],
     }
@@ -527,6 +607,35 @@ def sparklines():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/index_history')
+def index_history():
+    sym   = request.args.get('sym', '^TA125')
+    rng   = request.args.get('range', '1mo')
+    cache_key = f'tase:idxhist:{sym}:{rng}'
+    cached = rget(cache_key)
+    if cached and cached.get('_ts') and (time.time() - cached['_ts']) < 300:
+        return jsonify({'bars': cached.get('bars', [])})
+
+    period_map   = {'1d': '1d',  '5d': '5d',  '1mo': '1mo', '3mo': '3mo', '1y': '1y'}
+    interval_map = {'1d': '5m',  '5d': '30m', '1mo': '1d',  '3mo': '1d',  '1y': '1wk'}
+    period   = period_map.get(rng, '1mo')
+    interval = interval_map.get(rng, '1d')
+    try:
+        h = yf.Ticker(sym).history(period=period, interval=interval)
+        bars = []
+        for ts, row in h.iterrows():
+            close = row.get('Close')
+            if close is None or (isinstance(close, float) and math.isnan(close)):
+                continue
+            t = int(ts.timestamp()) if hasattr(ts, 'timestamp') else int(ts.value // 1e9)
+            bars.append({'time': t, 'value': round(float(close), 2)})
+        result = {'bars': bars, '_ts': time.time()}
+        rset(cache_key, result, ttl=300)
+        return jsonify({'bars': bars})
+    except Exception as e:
+        return jsonify({'bars': [], 'error': str(e)}), 500
+
+
 @app.route('/stock/<ticker>')
 def stock_page(ticker):
     return send_from_directory(BASE_DIR, 'stock.html')
@@ -542,14 +651,25 @@ def fx():
     if _fx_mem['data'] and (time.time() - _fx_mem['ts']) < 3600:
         return jsonify(_fx_mem['data'])
     try:
-        rate = float(yf.Ticker('USDILS=X').fast_info.last_price)
-        data = {'ils_per_usd': round(rate, 4), 'usd_per_ils': round(1/rate, 6)}
+        ticker = yf.Ticker('USDILS=X')
+        rate = float(ticker.fast_info.last_price)
+        change_pct = None
+        try:
+            h = ticker.history(period='5d', interval='1d')
+            if len(h) >= 2:
+                prev = float(h['Close'].iloc[-2])
+                curr = float(h['Close'].iloc[-1])
+                change_pct = round((curr - prev) / prev * 100, 3)
+        except Exception:
+            pass
+        data = {'ils_per_usd': round(rate, 4), 'usd_per_ils': round(1/rate, 6),
+                'change_pct': change_pct}
         payload = {**data, '_ts': time.time()}
         rset('tase:fx', payload, ttl=3600)
         _fx_mem['data'] = data; _fx_mem['ts'] = time.time()
         return jsonify(data)
     except Exception:
-        return jsonify({'ils_per_usd': 3.65, 'usd_per_ils': 0.2740})
+        return jsonify({'ils_per_usd': 3.65, 'usd_per_ils': 0.2740, 'change_pct': None})
 
 
 _earn_mem = {'data': None, 'ts': 0}
