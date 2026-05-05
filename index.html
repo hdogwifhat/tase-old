@@ -863,6 +863,10 @@
     <span id="mkt-dec" class="mkt-down">—</span>
     <span style="color:var(--text3);font-size:11px"> dn</span>
   </div>
+  <div class="mkt-seg" style="margin-left:auto">
+    <span class="mkt-lbl">TASE</span>
+    <span id="mkt-status" class="mkt-price" style="font-size:10px">—</span>
+  </div>
 </div>
 
 <!-- ── Filter pills ─────────────────────────────────────────────────────── -->
@@ -883,6 +887,7 @@
   <button class="pill" data-preset="compounders">Compounders</button>
   <button class="pill" data-preset="fcf">FCF Value</button>
   <button class="pill" data-preset="liquid">Liquid</button>
+  <button class="pill" data-preset="realestate">נדל"ן</button>
 </div>
 
 <!-- ── Column visibility panel ──────────────────────────────────────────── -->
@@ -1103,6 +1108,11 @@ const COLUMNS = [
   { id:'quick_ratio',    label:'Quick',        defaultOn:false },
   { id:'wacc',           label:'WACC',         defaultOn:false },
   { id:'adv_ils',        label:'ADV (ILS)',     defaultOn:false },
+  // ── Phase 3: Israeli RE metrics ──────
+  { id:'p_ffo',          label:'P/FFO',        defaultOn:false },
+  { id:'ffo_yield',      label:'FFO Yld',      defaultOn:false },
+  { id:'cap_rate_implied',label:'Cap Rate',    defaultOn:false },
+  { id:'nav_discount',   label:'NAV Disc',     defaultOn:false },
   // ─────────────────────────────────────
   { id:'analyst_rating', label:'Analyst',      defaultOn:true  },
   { id:'sector',         label:'Sector',       defaultOn:false },
@@ -1126,6 +1136,8 @@ const PILL_PRESETS = {
   'compounders': { 'f-roic-min': 15, 'f-revg-min': 10, 'f-de-max': 1 },
   'fcf':         { 'f-evfcf-max': 15, 'f-mcap-min': 500 },
   'liquid':      { 'f-adv-min': 500, 'f-mcap-min': 1000 },
+  // ── Phase 3: TASE RE preset ──────────
+  'realestate':  { '_realestate': true },
 };
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1429,6 +1441,33 @@ function renderCell(s, id) {
       const fmt = v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v.toFixed(0);
       return `<td><span class="${cls}">₪${fmt}</span></td>`;
     }
+    // ── Phase 3: Israeli RE columns ──────────────────────────────────────
+    case 'p_ffo': {
+      const v = s.p_ffo;
+      if (v == null || v <= 0) return `<td>${NA}</td>`;
+      const cls = v < 8 ? 'cf-val-cheap' : v < 15 ? 'cf-val-fair' : v < 25 ? 'cf-val-rich' : 'cf-val-xrich';
+      return `<td><span class="${cls}">${fmtNum(v,1)}x</span></td>`;
+    }
+    case 'ffo_yield': {
+      const v = s.ffo_yield;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v > 8 ? 'cf-pos-strong' : v > 4 ? 'cf-pos-muted' : v > 0 ? '' : 'cf-neg-muted';
+      return `<td><span class="${cls}">${v.toFixed(2)}%</span></td>`;
+    }
+    case 'cap_rate_implied': {
+      const v = s.cap_rate_implied;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v > 7 ? 'cf-pos-muted' : v > 4 ? 'cf-val-fair' : 'cf-neg-muted';
+      return `<td><span class="${cls}">${v.toFixed(1)}%</span></td>`;
+    }
+    case 'nav_discount': {
+      const v = s.nav_discount;
+      if (v == null) return `<td>${NA}</td>`;
+      // Positive = trading below book (discount to NAV) — attractive for RE
+      const cls = v > 20 ? 'cf-pos-strong' : v > 0 ? 'cf-pos-muted' : v > -20 ? 'cf-val-fair' : 'cf-neg-muted';
+      const sign = v > 0 ? '+' : '';
+      return `<td><span class="${cls}">${sign}${v.toFixed(1)}%</span></td>`;
+    }
     // ────────────────────────────────────────────────────────────────────
     case 'analyst_rating': return `<td class="col-analyst_rating">${fmtRating(s.analyst_rating)}</td>`;
     case 'sector':
@@ -1596,6 +1635,12 @@ function setPill(preset) {
   const cfg = PILL_PRESETS[preset] || {};
   if (cfg._recentipo) {
     recentIpoFilter = true;
+  } else if (cfg._realestate) {
+    // Filter to RE sector; auto-enable FFO-relevant columns
+    document.getElementById('f-search').value = 'real estate';
+    ['p_ffo','ffo_yield','cap_rate_implied','nav_discount'].forEach(id => {
+      const c = visibleCols; if (!c.has(id)) { c.add(id); renderHeader(); }
+    });
   } else {
     Object.entries(cfg).forEach(([id, val]) => {
       const el = document.getElementById(id); if (el) el.value = val;
@@ -2158,7 +2203,25 @@ function renderFocusContent(kind) {
 // ═══════════════════════════════════════════════════════════════════════
 // Market bar
 // ═══════════════════════════════════════════════════════════════════════
+function _updateTaseMarketStatus() {
+  // TASE market hours: Sun–Thu 09:30–17:30 Israel time (UTC+3)
+  const now = new Date();
+  const il = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const day = il.getDay();     // 0=Sun 1=Mon … 4=Thu 5=Fri 6=Sat
+  const h = il.getHours(), m = il.getMinutes();
+  const inWeek = day >= 0 && day <= 4;
+  const mins = h * 60 + m;
+  const open = 9 * 60 + 30, close = 17 * 60 + 30;
+  const isOpen = inWeek && mins >= open && mins < close;
+  const el = document.getElementById('mkt-status');
+  if (el) {
+    el.textContent = isOpen ? 'OPEN' : (day === 5 || day === 6) ? 'CLOSED (Shabbat)' : 'CLOSED';
+    el.style.color = isOpen ? 'var(--green)' : 'var(--text3)';
+  }
+}
+
 async function loadMarketBar() {
+  _updateTaseMarketStatus();
   try {
     const [mkt, fx] = await Promise.all([
       fetch('/api/market').then(r => r.json()),

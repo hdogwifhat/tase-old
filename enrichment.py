@@ -106,6 +106,9 @@ def _empty():
         'revenue_growth': None, 'eps_growth': None,
         'forward_pe': None, 'beta': None,
         'ev_fcf': None, 'wacc': None,
+        # Phase 3: Real estate metrics
+        'ffo': None, 'affo': None, 'p_ffo': None,
+        'ffo_yield': None, 'cap_rate_implied': None, 'nav_discount': None,
         'analyst_rating': None,
         'analyst_buy': None, 'analyst_hold': None, 'analyst_sell': None,
     }
@@ -180,6 +183,13 @@ def build_enrichment(yf_stocks):
             'beta':           fin.get('beta'),
             'ev_fcf':         fin.get('ev_fcf'),         # Phase 2
             'wacc':           fin.get('wacc'),           # Phase 2
+            # Phase 3: Real estate metrics
+            'ffo':            fin.get('ffo'),
+            'affo':           fin.get('affo'),
+            'p_ffo':          fin.get('p_ffo'),
+            'ffo_yield':      fin.get('ffo_yield'),
+            'cap_rate_implied': fin.get('cap_rate_implied'),
+            'nav_discount':   fin.get('nav_discount'),
             # Analyst (Finnhub)
             'analyst_rating': _rating(rec),
             'analyst_buy':    (rec.get('strongBuy', 0) + rec.get('buy', 0)) if rec else None,

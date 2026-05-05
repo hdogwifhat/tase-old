@@ -102,6 +102,52 @@ def _years(df, n=5):
 
 # ── Self-computed ratios (fallback when stock.info doesn't provide them) ───
 
+def _compute_re_metrics(ratios, info, fin, bs, cf):
+    """
+    Real-estate-specific metrics for Israeli נדל"ן מניב / יזמי companies.
+    Only meaningful for Real Estate / REIT sector; safe to compute for all.
+
+    FFO  = Net Income + D&A − Net gains on property sales
+    AFFO = FFO − recurring maintenance capex (proxy: total capex × 0.5)
+    Implied Cap Rate = Operating Income / Total Assets (rough proxy for NOI/AV)
+    P/FFO = Market Cap / FFO  (replaces P/E for RE)
+    FFO Yield = FFO / Market Cap × 100
+    """
+    mkt = info.get('marketCap') or 0
+
+    ni  = _latest(fin, 'Net Income Common', 'Net Income')
+    da  = _latest(fin, 'Depreciation And Amortization', 'Depreciation Amortization Depletion',
+                  'Depreciation')
+    # Property gains are reported under various names in Israeli RE statements
+    prop_gain = _latest(fin, 'Gain On Sale Of Properties', 'Net Realized Gain',
+                        'Gain Loss On Sale Of Properties',
+                        'Net Income From Real Estate Investment',
+                        'Revaluation Surplus') or 0
+
+    if ni is not None and da is not None:
+        ffo = ni + da - prop_gain
+        ratios['ffo'] = ffo
+
+        if mkt and mkt > 0:
+            ratios['p_ffo']    = _f(mkt / ffo) if ffo > 0 else None
+            ratios['ffo_yield'] = round(ffo / mkt * 100, 2) if ffo > 0 else None
+
+        # AFFO: subtract 50% of total capex as maintenance proxy
+        capex = _latest(cf, 'Capital Expenditure') or 0
+        ratios['affo'] = ffo + (capex * 0.5)  # capex is negative in yfinance
+
+    # Implied Cap Rate ≈ Operating Income / Total Assets
+    oi = _latest(fin, 'Operating Income', 'EBIT')
+    ta = _latest(bs, 'Total Assets')
+    if oi and ta and ta > 0:
+        ratios['cap_rate_implied'] = round(oi / ta * 100, 2)
+
+    # NAV Discount: (Book Equity − Mkt Cap) / Book Equity
+    eq = _latest(bs, 'Stockholders Equity', 'Common Stock Equity')
+    if eq and eq > 0 and mkt:
+        ratios['nav_discount'] = round((eq - mkt) / eq * 100, 2)
+
+
 def _compute_missing(ratios, info, fin, bs):
     """
     Fill in any null ratios by computing them from raw financial statements.
@@ -325,6 +371,13 @@ def fetch_financials(ticker: str) -> dict:
         'beta':           _f(info.get('beta')),
         'ev_fcf':         None,   # computed below — Phase 2
         'wacc':           None,   # computed below — Phase 2
+        # Phase 3: Real estate metrics
+        'ffo':            None,
+        'affo':           None,
+        'p_ffo':          None,
+        'ffo_yield':      None,
+        'cap_rate_implied': None,
+        'nav_discount':   None,
         'book_value':     _f(info.get('bookValue')),
         'trailing_eps':   _f(info.get('trailingEps')),
     }
@@ -336,6 +389,8 @@ def fetch_financials(ticker: str) -> dict:
 
     # Self-compute any still-null ratios from raw statements
     _compute_missing(ratios, info, fin, bs)
+    # Phase 3: RE metrics (safe to compute for all — only meaningful for RE sector)
+    _compute_re_metrics(ratios, info, fin, bs, cf)
 
     # Build multi-year financial tables
     fin_years = _years(fin) or _years(bs) or _years(cf)

@@ -613,7 +613,9 @@ async function loadStock() {
   const RATIO_FIELDS = ['ps_ratio','pb_ratio','ev_ebitda','debt_equity','current_ratio',
                         'quick_ratio','roe','roa','roic','gross_margin','op_margin','net_margin',
                         'revenue_growth','eps_growth','forward_pe','beta',
-                        'ev_fcf','wacc','adv_ils','sector','industry'];
+                        'ev_fcf','wacc','adv_ils',
+        'ffo','affo','p_ffo','ffo_yield','cap_rate_implied','nav_discount',
+        'sector','industry'];
   RATIO_FIELDS.forEach(f => {
     if (detailData[f] != null) stockInfo[f] = detailData[f];
   });
@@ -642,8 +644,9 @@ async function loadStock() {
       '<div style="display:flex;align-items:center;justify-content:center;height:380px;color:var(--text3);font-size:13px"><span data-i18n="stock_alt_no_history">No price history available</span></div>';
   }
 
-  renderFinTable(curTab);
+  renderAllFinancials();
   renderNews(detailData.news || []);
+  loadStockNews();          // May upgrade news with richer per-stock RSS results
   renderPeers(listRes?.data || []);
   document.getElementById('nav-name').textContent = stockInfo.name || '';
 }
@@ -795,6 +798,12 @@ function renderStatistics() {
     `<tr>${col('Quick Ratio',   wrap(n(s.quick_ratio,2), s.quick_ratio!=null?(s.quick_ratio<0.7?'muted-pct-neg':s.quick_ratio<1?'muted-pct':'muted-pct-pos'):''))}${col('ADV (ILS)', s.adv_ils!=null?(s.adv_ils>=1e6?(s.adv_ils/1e6).toFixed(1)+'M':(s.adv_ils/1e3).toFixed(0)+'K'):'—')}</tr>`,
     `<tr>${col('52W High', s.week52_high!=null?'₪'+s.week52_high:'—')}${col('52W Low', s.week52_low!=null?'₪'+s.week52_low:'—')}</tr>`,
     `<tr>${col('IPO Date', detailData.ipo_date||'—')}${col('Exchange', 'TASE')}</tr>`,
+    // ── Real Estate (only shown when metrics are available) ──────────────
+    ...(s.p_ffo != null || s.ffo_yield != null ? [
+      `<tr><td colspan="4" class="st-grp-hd" style="padding-top:8px">Real Estate (נדל"ן) Metrics</td></tr>`,
+      `<tr>${col('P/FFO', s.p_ffo!=null&&s.p_ffo>0?n(s.p_ffo,1,'x'):'—', valCls(s.p_ffo,[8,15,25]))}${col('FFO Yield', s.ffo_yield!=null?s.ffo_yield.toFixed(2)+'%':'—')}</tr>`,
+      `<tr>${col('Cap Rate (impl.)', s.cap_rate_implied!=null?s.cap_rate_implied.toFixed(1)+'%':'—')}${col('NAV Discount', s.nav_discount!=null?(s.nav_discount>0?'+':'')+s.nav_discount.toFixed(1)+'%':'—')}</tr>`,
+    ] : []),
   ].join('');
 
   const tbl = `<table class="stats-tbl"><tbody>${rows}</tbody></table>`;
@@ -996,16 +1005,35 @@ function renderAnalysts() {
 // ── News ────────────────────────────────────────────────────────────────
 function renderNews(news) {
   const el=document.getElementById('news-content');
-  if(!news||!news.length){ el.innerHTML='<div class="dim"><span data-i18n="news_none">No recent news available.</span></div>'; return; }
+  if(!news||!news.length){
+    el.innerHTML=`<div class="dim">No news available. <a href="https://maya.tase.co.il/reports/company?symbol=${encodeURIComponent(TICKER)}" target="_blank" rel="noopener" style="color:var(--accent)">View filings on Maya →</a></div>`;
+    return;
+  }
   el.innerHTML=news.map(n=>{
     const d=n.datetime?new Date(n.datetime*1000).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
-    const hl=n.url?`<a href="${n.url}" target="_blank" rel="noopener">${n.headline}</a>`:n.headline;
+    const hl=n.url?`<a href="${n.url}" target="_blank" rel="noopener">${esc(n.headline)}</a>`:esc(n.headline);
+    // Maya deep link entries get distinct treatment
+    if (n._maya) {
+      return `<div class="news-item" style="border-left:2px solid var(--accent-dim);padding-left:10px">
+        <div class="news-hl" style="font-size:11px"><a href="${n.url}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(n.headline)}</a></div>
+        <div class="news-meta"><span class="news-src" style="color:var(--accent)">Maya · TASE Regulatory</span></div>
+        ${n.summary?`<div class="news-sum" style="color:var(--text3)">${esc(n.summary)}</div>`:''}
+      </div>`;
+    }
     return `<div class="news-item">
       <div class="news-hl">${hl}</div>
-      <div class="news-meta"><span class="news-src">${n.source}</span><span>${d}</span></div>
-      ${n.summary?`<div class="news-sum">${n.summary}</div>`:''}
+      <div class="news-meta"><span class="news-src">${esc(n.source)}</span><span>${d}</span></div>
+      ${n.summary?`<div class="news-sum">${esc(n.summary)}</div>`:''}
     </div>`;
   }).join('');
+}
+
+// Also try the dedicated stock news endpoint for richer results
+async function loadStockNews() {
+  try {
+    const d = await fetch(`/api/news/stock/${encodeURIComponent(TICKER)}`).then(r=>r.json());
+    if (Array.isArray(d) && d.length) renderNews(d);
+  } catch {}
 }
 
 // ── Peers ────────────────────────────────────────────────────────────────

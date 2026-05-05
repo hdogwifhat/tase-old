@@ -115,6 +115,13 @@ def merge_enrichment(stocks, enrich_data=None):
         row['roic']           = e.get('roic')
         row['ev_fcf']         = e.get('ev_fcf')
         row['wacc']           = e.get('wacc')
+        # Phase 3: Real estate metrics
+        row['ffo']            = e.get('ffo')
+        row['affo']           = e.get('affo')
+        row['p_ffo']          = e.get('p_ffo')
+        row['ffo_yield']      = e.get('ffo_yield')
+        row['cap_rate_implied']= e.get('cap_rate_implied')
+        row['nav_discount']   = e.get('nav_discount')
         out.append(row)
     return out
 
@@ -206,16 +213,18 @@ def _fetch_news(bare_ticker, company_name=''):
         except Exception:
             pass
 
-    # Google News fallback — always show something
-    if not news:
-        from urllib.parse import quote as _url_quote
-        search_name = company_name or bare_ticker
-        google_url = f'https://news.google.com/search?q={_url_quote(search_name)}+stock'
-        news = [{'headline': f'Search news for {search_name}',
-                 'source': 'Google News',
-                 'url': google_url,
-                 'datetime': 0,
-                 'summary': 'No direct news found — click to search Google News.'}]
+    # Maya regulatory filings — always append as a navigation entry
+    # (API is WAF-blocked; deep link lets user access filings directly)
+    maya_url = MAYA_URL.format(ticker=bare_ticker)
+    news.append({
+        'headline': f'View regulatory filings on Maya (מאיה) — {bare_ticker}',
+        'source': 'Maya · TASE',
+        'url': maya_url,
+        'datetime': 0,
+        'summary': 'Official TASE disclosure system. Click to view all regulatory filings, '
+                   'immediate reports, and financial statements for this company.',
+        '_maya': True,  # flag for frontend to style differently
+    })
     return news
 
 
@@ -324,12 +333,17 @@ def _fetch_index_quote(sym=None, tase_id=None):
 
 
 # ── Israeli market news (RSS) ─────────────────────────────────────────────────
+# Note on Maya (מאיה) API: market.tase.co.il and mayaapi.tase.co.il are WAF-blocked
+# for server-side requests. Maya deep links are provided per-stock in the news section.
+# Maya URL pattern: https://maya.tase.co.il/reports/company?symbol=TICKER
+
+MAYA_URL = 'https://maya.tase.co.il/reports/company?symbol={ticker}'
 
 _RSS_FEEDS = [
-    ('Bizportal', 'https://www.bizportal.co.il/rss/news'),
-    ('Calcalist', 'https://www.calcalist.co.il/GeneralRSS/0,16335,L-8,00.xml'),
-    ('TheMarker', 'https://www.themarker.com/cmlink/1.744'),
-    ('Funder',    'https://funder.co.il/feed/'),
+    # Verified working as of Phase 3 audit
+    ('Walla Finance', 'https://rss.walla.co.il/feed/22'),
+    ('Ynet Capital',  'https://www.ynet.co.il/Integration/StoryRss2.xml?catid=5326'),
+    ('TheMarker',     'https://www.themarker.com/cmlink/1.744'),
 ]
 
 
@@ -418,6 +432,13 @@ def fetch_stock_detail(ticker):
         'roic':           tfin.get('roic'),
         'ev_fcf':         tfin.get('ev_fcf'),
         'wacc':           tfin.get('wacc'),
+        # Phase 3: Real estate metrics
+        'ffo':            tfin.get('ffo'),
+        'affo':           tfin.get('affo'),
+        'p_ffo':          tfin.get('p_ffo'),
+        'ffo_yield':      tfin.get('ffo_yield'),
+        'cap_rate_implied': tfin.get('cap_rate_implied'),
+        'nav_discount':   tfin.get('nav_discount'),
         'sector':         e.get('sector')      or tfin.get('sector'),
         'industry':       e.get('industry')    or tfin.get('industry'),
     }
@@ -591,6 +612,28 @@ def market_news():
             print(f'[News/RSS] {source}: {e}', flush=True)
     rset('tase:market_news', {'items': items, '_ts': time.time()}, ttl=900)
     return jsonify(items)
+
+
+@app.route('/api/news/stock/<ticker>')
+def stock_news(ticker):
+    """
+    Per-stock news: Finnhub → yfinance → RSS name-match → Maya deep link.
+    Cached 30 min per ticker.
+    """
+    cache_key = f'tase:news:{ticker}'
+    cached = rget(cache_key)
+    if cached and cached.get('_ts') and (time.time() - cached['_ts']) < 1800:
+        return jsonify(cached.get('items', []))
+
+    # Look up company name from stocks cache
+    stocks, _ = _stocks_from_redis_or_file()
+    stock_row = next((s for s in stocks if s.get('ticker') == ticker), {})
+    company_name = stock_row.get('name', '')
+
+    news = _fetch_news(ticker, company_name)
+
+    rset(cache_key, {'items': news, '_ts': time.time()}, ttl=1800)
+    return jsonify(news)
 
 
 @app.route('/api/market')
