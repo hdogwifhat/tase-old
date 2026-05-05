@@ -70,8 +70,8 @@
 
     /* Every section after overview gets a divider and spacing */
     .scroll-section {
-      padding-top: 32px;
-      margin-top: 32px;
+      padding-top: 14px;
+      margin-top: 14px;
       border-top: 1px solid var(--border);
     }
 
@@ -80,7 +80,7 @@
 
     /* ── Stock header ────────────────────────────────────────────────── */
     #stock-header {
-      margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+      margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
     }
 
     /* ── Tear Sheet (dense institutional grid) ─────────────────────────── */
@@ -181,15 +181,19 @@
     .sector-tag { background: var(--accent-dim); color: #60a5fa; border: 1px solid #1e3a5f;
                    border-radius: 4px; padding: 2px 8px; font-size: 11px; }
     .price-row  { display: flex; align-items: baseline; gap: 12px; margin: 10px 0 8px; flex-wrap: wrap; }
-    .big-price  { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 700;
+    .big-price  { font-family: 'JetBrains Mono', monospace; font-size: 24px; font-weight: 700;
                    color: var(--text); font-variant-numeric: tabular-nums; }
-    .big-chg    { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .big-chg    { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
     .pos { color: var(--green); } .neg { color: var(--red); } .zero { color: var(--text2); }
-    .sub-row    { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
-    .sub-item   { font-size: 12px; color: var(--text3); }
+    .sub-row    { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+    .sub-item   { font-size: 11px; color: var(--text3); }
     .sub-item strong { color: var(--text2); font-weight: 500; }
-    .desc-text  { font-size: 12px; color: var(--text3); line-height: 1.7; }
-    .meta-row   { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; font-size: 11px; color: var(--text3); }
+    /* Description collapsed by default — toggle to expand */
+    .desc-text  { font-size: 11px; color: var(--text3); line-height: 1.6;
+                   max-height: 2.4em; overflow: hidden; cursor: pointer;
+                   transition: max-height 0.2s; }
+    .desc-text.expanded { max-height: 20em; }
+    .meta-row   { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 4px; font-size: 10px; color: var(--text3); }
     .meta-row a { color: var(--accent); text-decoration: none; }
     .meta-row a:hover { text-decoration: underline; }
 
@@ -222,40 +226,59 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ── Section heading ─────────────────────────────────────────────── */
-    .sec-heading { font-size: 13px; font-weight: 700; color: var(--text2);
-                    text-transform: uppercase; letter-spacing: 0.06em;
-                    padding: 20px 0 12px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+    .sec-heading { font-size: 10px; font-weight: 800; color: var(--text3);
+                    text-transform: uppercase; letter-spacing: 0.1em;
+                    padding: 6px 0 6px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
     .sec-heading:first-child { padding-top: 0; }
 
-    /* ── Full stats grid (Statistics section) ───────────────────────── */
-    .full-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
-    .fs-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
-    .fs-lbl  { font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase;
-                letter-spacing: 0.05em; margin-bottom: 5px; }
-    .fs-val  { font-size: 15px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+    /* ── Dense stats table (replaces card grid) ─────────────────────── */
+    .stats-tbl { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: 6px; }
+    .stats-tbl td { padding: 3px 8px; border-bottom: 1px solid rgba(255,255,255,0.03);
+                     vertical-align: middle; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .stats-tbl tr:hover td { background: rgba(255,255,255,0.025); }
+    .st-lbl { color: var(--text3); font-size: 10px; font-weight: 600; width: 38%;
+               text-transform: uppercase; letter-spacing: 0.04em; }
+    .st-val { color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 11.5px;
+               text-align: right; width: 12%; font-weight: 600; }
+    .stats-tbl .st-sep { padding: 5px 8px 2px; }
+    .stats-tbl .st-sep td { border-bottom: 1px solid var(--border); padding-top: 8px; }
+    .st-grp-hd { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em;
+                  color: #6b7280; padding-left: 4px; background: rgba(0,0,0,0.2) !important; }
+    /* legacy card (keep for any older renderers) */
+    .fs-card { background: var(--surface2); border: 1px solid var(--border); padding: 6px 8px; }
+    .fs-lbl  { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; }
+    .fs-val  { font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
 
-    /* ── Financials ──────────────────────────────────────────────────── */
-    .fin-controls { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
-    .tab-row  { display: flex; gap: 4px; }
-    .tab-btn  { background: var(--surface2); color: var(--text3); border: 1px solid var(--border);
-                 padding: 6px 14px; border-radius: 5px; font-size: 12px; cursor: pointer; font-family: inherit; }
-    .tab-btn:hover { background: var(--surface3); }
-    .tab-btn.active { background: var(--accent-dim); color: #60a5fa; border-color: var(--accent); }
+    /* ── Financials — 3-column simultaneous view ───────────────────── */
+    .fin-controls { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
     .per-toggle { display: flex; gap: 2px; background: var(--surface2); border: 1px solid var(--border);
-                   border-radius: 6px; padding: 2px; }
-    .per-btn { background: transparent; border: none; color: var(--text3); padding: 4px 10px;
-                font-size: 11px; cursor: pointer; border-radius: 4px; font-family: inherit; }
+                   border-radius: 5px; padding: 2px; }
+    .per-btn { background: transparent; border: none; color: var(--text3); padding: 3px 9px;
+                font-size: 11px; cursor: pointer; border-radius: 3px; font-family: inherit; }
     .per-btn.active { background: var(--accent); color: #fff; }
+    /* keep legacy tab-btn for peek mode fallback */
+    .tab-row  { display: none; }
+    .tab-btn  { display: none; }
+    /* 3-col grid */
+    .fin-3col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .fin-3col-pane { overflow-x: auto; }
+    .fin-3col-hd { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em;
+                    color: #6b7280; padding: 4px 6px; background: rgba(0,0,0,0.25);
+                    border-bottom: 1px solid var(--border); border-radius: 3px 3px 0 0; }
     .fin-wrap { overflow-x: auto; }
-    .fin-tbl  { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-    .fin-tbl th { background: var(--surface2); color: var(--text3); font-size: 10px; font-weight: 700;
-                   text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 12px; text-align: right;
+    .fin-tbl  { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+    .fin-tbl th { background: #0c0c12; color: var(--text3); font-size: 9px; font-weight: 700;
+                   text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 6px; text-align: right;
                    border-bottom: 1px solid var(--border); white-space: nowrap; }
-    .fin-tbl th:first-child { text-align: left; min-width: 180px; }
-    .fin-tbl td { padding: 7px 12px; color: var(--text2); border-bottom: 1px solid #0f0f14;
+    .fin-tbl th:first-child { text-align: left; min-width: 110px; max-width: 150px; }
+    .fin-tbl td { padding: 3px 6px; color: var(--text2); border-bottom: 1px solid rgba(255,255,255,0.03);
                    text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .fin-tbl td:first-child { text-align: left; color: var(--text); }
-    .fin-tbl tr:hover td { background: var(--surface2); }
+    .fin-tbl td:first-child { text-align: left; color: var(--text); font-size: 10px;
+                                max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+    .fin-tbl tr:hover td { background: rgba(255,255,255,0.025); }
+    /* Peek: stack vertically */
+    html.peek-embed .fin-3col { grid-template-columns: 1fr; gap: 12px; }
+    @media (max-width: 900px) { .fin-3col { grid-template-columns: 1fr; gap: 12px; } }
 
     /* Combo chart (revenue bars + margin line) */
     #combo-chart-wrap { margin-bottom: 12px; }
@@ -406,22 +429,31 @@
         </div>
       </div>
 
-      <!-- Financials section -->
+      <!-- Financials section — Income · Balance Sheet · Cash Flow simultaneously -->
       <div id="sec-financials" class="scroll-section">
         <div class="sec-heading" data-i18n="stock_sec_heading_financials">Financials</div>
         <div class="fin-controls">
-          <div class="tab-row">
-            <button class="tab-btn active" data-tab="income"   onclick="switchFinTab('income')"><span data-i18n="stock_tab_income">Income</span></button>
-            <button class="tab-btn"        data-tab="balance"  onclick="switchFinTab('balance')"><span data-i18n="stock_tab_balance_sheet">Balance Sheet</span></button>
-            <button class="tab-btn"        data-tab="cashflow" onclick="switchFinTab('cashflow')"><span data-i18n="stock_tab_cash_flow">Cash Flow</span></button>
-          </div>
           <div class="per-toggle">
-            <button class="per-btn active" data-per="annual"    onclick="switchPeriod('annual')"><span data-i18n="stock_period_annual">Annual</span></button>
-            <button class="per-btn"        data-per="quarterly" onclick="switchPeriod('quarterly')"><span data-i18n="stock_period_quarterly">Quarterly</span></button>
+            <button class="per-btn active" data-per="annual"    onclick="switchPeriod('annual')">Annual</button>
+            <button class="per-btn"        data-per="quarterly" onclick="switchPeriod('quarterly')">Quarterly</button>
           </div>
+          <span id="fin-period-note" style="font-size:10px;color:var(--text3)"></span>
         </div>
         <div id="combo-chart-wrap"></div>
-        <div class="fin-wrap" id="fin-table"><div class="dim"><span data-i18n="stock_loading_ellipsis">Loading…</span></div></div>
+        <div class="fin-3col">
+          <div class="fin-3col-pane">
+            <div class="fin-3col-hd">Income Statement</div>
+            <div id="fin-income"><div class="dim">Loading…</div></div>
+          </div>
+          <div class="fin-3col-pane">
+            <div class="fin-3col-hd">Balance Sheet</div>
+            <div id="fin-balance"><div class="dim">Loading…</div></div>
+          </div>
+          <div class="fin-3col-pane">
+            <div class="fin-3col-hd">Cash Flow</div>
+            <div id="fin-cashflow"><div class="dim">Loading…</div></div>
+          </div>
+        </div>
       </div>
 
       <!-- Statistics section -->
@@ -643,7 +675,12 @@ function renderHeader() {
   document.getElementById('h-sub').innerHTML = sub.join('');
 
   const desc = detailData.description || '';
-  document.getElementById('h-desc').textContent = desc.slice(0,350) + (desc.length>350?'…':'');
+  const descEl = document.getElementById('h-desc');
+  descEl.textContent = desc;
+  if (desc.length > 120) {
+    descEl.title = 'Click to expand';
+    descEl.onclick = () => descEl.classList.toggle('expanded');
+  }
 
   const meta = [];
   if (detailData.ceo)       meta.push(`<span data-i18n="meta_ceo_prefix">CEO:</span> ${esc(detailData.ceo)}`);
@@ -714,37 +751,62 @@ function renderTearSheet() {
 
 function renderStatistics() {
   const s = stockInfo;
-  const m = (v,d=2) => v!=null?fmtN(v,d):NA;
-  const card = (i18nKey, fb, v) => `<div class="fs-card"><div class="fs-lbl"><span data-i18n="${i18nKey}">${fb}</span></div><div class="fs-val">${v}</div></div>`;
+  const n = (v, d=2, suf='') => v != null ? fmtN(v, d) + suf : '—';
+  const pct = (v, d=1) => {
+    if (v == null) return '—';
+    const sign = v > 0 ? '+' : '';
+    return `${sign}${v.toFixed(d)}%`;
+  };
+  const col = (lbl, val, cls='') =>
+    `<td class="st-lbl">${lbl}</td><td class="st-val${cls?' '+cls:''}">${val}</td>`;
 
-  document.getElementById('stats-valuation').innerHTML = [
-    card('stat_pe_ttm', 'P/E (TTM)', m(s.pe,1)), card('stat_fwd_pe_long', 'Forward P/E', m(s.forward_pe,1)),
-    card('col_ps', 'P/S', m(s.ps_ratio,1)), card('col_pb', 'P/B', m(s.pb_ratio,1)),
-    card('col_ev_ebitda', 'EV/EBITDA', m(s.ev_ebitda,1)), card('stat_beta', 'Beta', m(s.beta,2)),
-    card('stat_div_yield', 'Div Yield', s.div_yield!=null?`<span class="muted-pct">${s.div_yield.toFixed(2)}%</span>`:NA),
+  // Color helpers (terminal muted palette — same logic as screener table)
+  const valCls = (v, thresholds) => {
+    if (v == null) return '';
+    if (v < thresholds[0]) return 'muted-pct-pos';
+    if (v < thresholds[1]) return '';
+    if (v < thresholds[2]) return 'muted-pct';
+    return 'muted-pct-neg';
+  };
+  const growCls = v => v == null ? '' : v > 15 ? 'muted-pct-pos' : v > 0 ? '' : 'muted-pct-neg';
+  const margCls = v => v == null ? '' : v > 20 ? 'muted-pct-pos' : v >= 0 ? '' : 'muted-pct-neg';
+
+  const wrap = (val, cls) => cls ? `<span class="${cls}">${val}</span>` : val;
+
+  // One dense table spanning all 4 sub-sections, 4 columns wide (label|val  label|val)
+  const rows = [
+    // ── Valuation
+    `<tr><td colspan="4" class="st-grp-hd">Valuation</td></tr>`,
+    `<tr>${col('P/E (TTM)',    n(s.pe,1,'x'),    valCls(s.pe,[10,20,35]))}${col('Fwd P/E', n(s.forward_pe,1,'x'), valCls(s.forward_pe,[10,20,35]))}</tr>`,
+    `<tr>${col('EV/EBITDA',   n(s.ev_ebitda,1,'x'), valCls(s.ev_ebitda,[6,12,20]))}${col('P/S', n(s.ps_ratio,1,'x'), valCls(s.ps_ratio,[1,3,8]))}</tr>`,
+    `<tr>${col('P/B',         n(s.pb_ratio,1,'x'),  valCls(s.pb_ratio,[1,3,6]))}${col('Mkt Cap', s.market_cap?fmtL(s.market_cap).replace(/<[^>]+>/g,''):'—')}</tr>`,
+    `<tr>${col('Beta',        n(s.beta,2))}${col('Div Yield', s.div_yield!=null?s.div_yield.toFixed(2)+'%':'—')}</tr>`,
+    // ── Profitability
+    `<tr><td colspan="4" class="st-grp-hd" style="padding-top:8px">Profitability</td></tr>`,
+    `<tr>${col('ROE', wrap(pct(s.roe), growCls(s.roe)))}${col('ROA', wrap(pct(s.roa), growCls(s.roa)))}</tr>`,
+    `<tr>${col('Gross Margin', wrap(pct(s.gross_margin), margCls(s.gross_margin)))}${col('Op Margin', wrap(pct(s.op_margin), margCls(s.op_margin)))}</tr>`,
+    `<tr>${col('Net Margin', wrap(pct(s.net_margin), margCls(s.net_margin)))}${col('Rev Growth', wrap(pct(s.revenue_growth), growCls(s.revenue_growth)))}</tr>`,
+    `<tr>${col('EPS Growth', wrap(pct(s.eps_growth), growCls(s.eps_growth)))}${col('EPS (TTM)', s.eps!=null?'₪'+fmtN(s.eps):'—')}</tr>`,
+    // ── Financial Health
+    `<tr><td colspan="4" class="st-grp-hd" style="padding-top:8px">Financial Health</td></tr>`,
+    `<tr>${col('Debt / Equity', wrap(n(s.debt_equity,2), s.debt_equity!=null?(s.debt_equity>3?'muted-pct-neg':s.debt_equity>1.5?'muted-pct':''):''))}${col('Current Ratio', n(s.current_ratio,2))}</tr>`,
+    `<tr>${col('52W High', s.week52_high!=null?'₪'+s.week52_high:'—')}${col('52W Low', s.week52_low!=null?'₪'+s.week52_low:'—')}</tr>`,
+    `<tr>${col('Price', s.price!=null?'₪'+fmtN(s.price):'—')}${col('Volume', s.volume?fmtL(s.volume).replace(/<[^>]+>/g,''):'—')}</tr>`,
+    `<tr>${col('IPO Date', detailData.ipo_date||'—')}${col('Exchange', 'TASE')}</tr>`,
   ].join('');
 
-  document.getElementById('stats-profitability').innerHTML = [
-    card('tbl_focus_roe_plain', 'ROE', fmtMutedPct(s.roe,1)), card('tear_roa', 'ROA', fmtMutedPct(s.roa,1)),
-    card('stat_gross_margin_long', 'Gross Margin', fmtMutedPct(s.gross_margin,1)),
-    card('stat_op_margin_long', 'Op Margin', fmtMutedPct(s.op_margin,1)),
-    card('stat_net_margin_long', 'Net Margin', fmtMutedPct(s.net_margin,1)),
-    card('stat_rev_growth_long', 'Rev Growth', fmtMutedPct(s.revenue_growth,1)),
-    card('stat_eps_growth_long', 'EPS Growth', fmtMutedPct(s.eps_growth,1)),
-  ].join('');
+  const tbl = `<table class="stats-tbl"><tbody>${rows}</tbody></table>`;
 
-  document.getElementById('stats-health').innerHTML = [
-    card('stat_debt_equity_long', 'Debt/Equity', m(s.debt_equity,2)),
-    card('stat_current_ratio_long', 'Current Ratio', m(s.current_ratio,2)),
-    card('stat_52w_high_long', '52W High', s.week52_high!=null?`₪${s.week52_high}`:NA),
-    card('stat_52w_low_long', '52W Low', s.week52_low!=null?`₪${s.week52_low}`:NA),
-  ].join('');
+  // Inject into the first sub-section el, clear the rest
+  document.getElementById('stats-valuation').innerHTML = tbl;
+  document.getElementById('stats-profitability').innerHTML = '';
+  document.getElementById('stats-health').innerHTML = '';
+  document.getElementById('stats-pershare').innerHTML = '';
 
-  document.getElementById('stats-pershare').innerHTML = [
-    card('stat_eps_ttm_money', 'EPS (TTM)', s.eps!=null?`₪${fmtN(s.eps)}`:NA),
-    card('stat_price', 'Price', s.price!=null?`₪${fmtN(s.price)}`:NA),
-    card('stat_mkt_cap_long', 'Market Cap', s.market_cap?fmtL(s.market_cap).replace(/<[^>]+>/g,''):NA),
-  ].join('');
+  // Also hide the redundant section headings (Profitability / Financial Health / Per Share)
+  // since they're now sub-headers inside the table
+  const headings = document.querySelectorAll('#sec-statistics .sec-heading');
+  headings.forEach((h, i) => { if (i > 0) h.style.display = 'none'; });
 }
 
 // ── Chart ──────────────────────────────────────────────────────────────
@@ -797,53 +859,61 @@ function setRange(r) {
   if(chartInst&&allOHLCV.length) _applyChartData(allOHLCV,r);
 }
 
-// ── Financials ─────────────────────────────────────────────────────────
-function switchFinTab(tab) {
-  curTab = tab;
-  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
-  renderFinTable(tab);
-}
+// ── Financials — simultaneous 3-column view ────────────────────────────
+function switchFinTab(tab) { /* legacy — no-op in new 3col layout */ }
 
 function switchPeriod(per) {
   curPeriod = per;
   document.querySelectorAll('.per-btn').forEach(b=>b.classList.toggle('active',b.dataset.per===per));
-  renderFinTable(curTab);
+  renderAllFinancials();
 }
 
-function renderFinTable(tab) {
+function _buildFinTable(tab) {
   const data = curPeriod==='quarterly' && qtrData[tab]?.years?.length ? qtrData[tab] : finData[tab];
-  if (!data||!data.years.length) {
-    document.getElementById('fin-table').innerHTML =
-      '<div class="dim"><span data-i18n="fin_no_data">No data available.</span></div>';
-    renderComboChart(null); return;
-  }
-  const rows = data.rows.slice(0,18);
+  if (!data || !data.years.length)
+    return '<div class="dim" style="padding:8px;font-size:11px">No data</div>';
+  const rows = data.rows.slice(0, 20);
   const quarterly = curPeriod === 'quarterly';
-  document.getElementById('fin-table').innerHTML=`
-    <div class="fin-wrap"><table class="fin-tbl">
-      <thead><tr><th><span data-i18n="fin_tbl_heading_metric">Metric</span></th>${data.years.map(y=>`<th>${y}</th>`).join('')}</tr></thead>
-      <tbody>${rows.map(r=>`<tr><td title="${esc(r.name)}">${rowLbl(r.name)}</td>
-        ${r.values.map((v,i)=>{
-          let yslot='';
-          let prev=-1;
-          if (quarterly) {
-            if (i >= 4 && v != null && r.values[i-4] != null && Math.abs(r.values[i-4]) > 1e-12) prev=i-4;
-          } else if (i > 0 && v != null && r.values[i-1] != null && Math.abs(r.values[i-1]) > 1e-12) {
-            prev = i - 1;
-          }
-          if (prev>=0) {
-            const pv=r.values[prev];
-            const chg=(v-pv)/Math.abs(pv)*100;
-            const sg=chg>=0?'+':'';
-            const cls=chg>0?'yoy-soft-up':chg<0?'yoy-soft-down':'yoy-soft-flat';
-            yslot=`<span class="yoy-slot ${cls}"> [${sg}${chg.toFixed(1)}%]</span>`;
-          }
-          return `<td class="fin-cell"><span class="fin-abs">${fmtFin(v)}</span>${yslot}</td>`;
-        }).join('')}</tr>`).join('')}
-      </tbody>
-    </table></div>`;
-  renderComboChart(data, tab);
+  return `<div class="fin-wrap"><table class="fin-tbl">
+    <thead><tr>
+      <th>Metric</th>
+      ${data.years.slice(-4).map(y=>`<th>${y}</th>`).join('')}
+    </tr></thead>
+    <tbody>${rows.map(r=>`<tr>
+      <td title="${esc(r.name)}">${rowLbl(r.name)}</td>
+      ${r.values.slice(-4).map((v,i,arr)=>{
+        const allV = r.values;
+        const absI = allV.length - arr.length + i;  // index in full array
+        let yslot='';
+        let prev = -1;
+        if (quarterly) {
+          if (absI >= 4 && v != null && allV[absI-4] != null && Math.abs(allV[absI-4]) > 1e-12) prev = absI-4;
+        } else if (absI > 0 && v != null && allV[absI-1] != null && Math.abs(allV[absI-1]) > 1e-12) {
+          prev = absI - 1;
+        }
+        if (prev >= 0) {
+          const pv = allV[prev];
+          const chg = (v - pv) / Math.abs(pv) * 100;
+          const sg = chg >= 0 ? '+' : '';
+          const cls = chg > 2 ? 'yoy-soft-up' : chg < -2 ? 'yoy-soft-down' : 'yoy-soft-flat';
+          yslot = `<span class="yoy-slot ${cls}">${sg}${chg.toFixed(0)}%</span>`;
+        }
+        return `<td class="fin-cell"><span class="fin-abs">${fmtFin(v)}</span>${yslot}</td>`;
+      }).join('')}
+    </tr>`).join('')}
+    </tbody>
+  </table></div>`;
 }
+
+function renderAllFinancials() {
+  document.getElementById('fin-income').innerHTML   = _buildFinTable('income');
+  document.getElementById('fin-balance').innerHTML  = _buildFinTable('balance');
+  document.getElementById('fin-cashflow').innerHTML = _buildFinTable('cashflow');
+  renderComboChart(finData['income'], 'income');
+}
+
+// Keep legacy alias used in loadStock
+function renderFinTable(tab) { renderAllFinancials(); }
 
 function renderComboChart(data, tab) {
   const el = document.getElementById('combo-chart-wrap');

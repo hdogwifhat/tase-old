@@ -34,8 +34,8 @@
       --fund-flat:  #71717a;
       --amber:     #f59e0b;
       --amber-dim: #2d1f05;
-      /* row height — changed by density toggle */
-      --row-h:     44px;
+      /* row height — terminal density */
+      --row-h:     28px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     * { letter-spacing: 0 !important; }
@@ -89,6 +89,23 @@
              font-size: 11px; cursor: pointer; border-radius: 4px; font-family: inherit; }
     .dbtn:hover { color: var(--text2); background: var(--surface3); }
     .dbtn.active { background: var(--accent); color: #fff; }
+
+    /* ── Conditional formatting ── */
+    /* Strong directional: price change, daily momentum */
+    .cf-pos-strong { color: #22c55e !important; font-weight: 600; }
+    .cf-neg-strong { color: #ef4444 !important; font-weight: 600; }
+    /* Muted directional: fundamentals (margins, growth, ratios) */
+    .cf-pos-muted  { color: rgba(74,164,134,0.85) !important; }
+    .cf-neg-muted  { color: rgba(198,100,100,0.85) !important; }
+    /* Valuation heat: cheap=green, expensive=amber/red */
+    .cf-val-cheap  { color: rgba(74,164,134,0.75) !important; }
+    .cf-val-fair   { color: var(--text2) !important; }
+    .cf-val-rich   { color: rgba(245,158,11,0.85) !important; }
+    .cf-val-xrich  { color: rgba(239,68,68,0.80) !important; }
+    /* Leverage heat */
+    .cf-lev-ok     { color: rgba(74,164,134,0.75) !important; }
+    .cf-lev-warn   { color: rgba(245,158,11,0.80) !important; }
+    .cf-lev-danger { color: rgba(239,68,68,0.80) !important; }
 
     .hdr-btn { font-size: 12px; font-weight: 500; padding: 6px 14px;
                 font-family: inherit; border: none; border-radius: 6px; cursor: pointer; }
@@ -410,9 +427,9 @@
     .table-wrap { min-height: 700px; overflow-x: auto; overflow-y: auto; }
     table { width: 100%; border-collapse: collapse; }
     thead th {
-      background: var(--surface); color: var(--text3); font-weight: 600;
-      font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
-      padding: 0 12px; height: 36px; text-align: right; white-space: nowrap;
+      background: var(--surface); color: var(--text3); font-weight: 700;
+      font-size: 9px; text-transform: uppercase; letter-spacing: 0.07em;
+      padding: 0 7px; height: 24px; text-align: right; white-space: nowrap;
       cursor: pointer; user-select: none; border-bottom: 1px solid var(--border);
       position: sticky; top: 0; z-index: 2;
       font-family: 'Inter', sans-serif;
@@ -426,9 +443,9 @@
     }
     tbody tr:hover { background: #141419; }
     td {
-      padding: 0 12px; height: var(--row-h);
+      padding: 0 7px; height: var(--row-h);
       text-align: right; color: var(--text2); vertical-align: middle;
-      font-size: 13px;
+      font-size: 11.5px;
       font-variant-numeric: tabular-nums;
     }
 
@@ -773,9 +790,9 @@
   <div class="spacer"></div>
   <!-- Density toggle -->
   <div class="density-btns" title="Row density">
-    <button class="dbtn" data-density="32" onclick="setDensity(32)">&#9552;</button>
-    <button class="dbtn active" data-density="44" onclick="setDensity(44)">&#8801;</button>
-    <button class="dbtn" data-density="56" onclick="setDensity(56)">&#8800;</button>
+    <button class="dbtn active" data-density="28" onclick="setDensity(28)">&#9552;</button>
+    <button class="dbtn" data-density="36" onclick="setDensity(36)">&#8801;</button>
+    <button class="dbtn" data-density="44" onclick="setDensity(44)">&#8800;</button>
   </div>
   <!-- Currency toggle -->
   <div class="density-btns" title="Currency">
@@ -1252,26 +1269,106 @@ function renderCell(s, id) {
     case 'name':
       return `<td class="col-name"><span class="co-name" title="${s.name}">${s.name}</span></td>`;
     case 'price':          return `<td>${fmtP(s.price)}</td>`;
-    case 'change_pct':     return `<td>${fmtPct(s.change_pct)}</td>`;
+    case 'change_pct': {
+      const v = s.change_pct;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v > 0.5 ? 'cf-pos-strong' : v < -0.5 ? 'cf-neg-strong' : v > 0 ? 'pos' : v < 0 ? 'neg' : 'zero';
+      const sign = v > 0 ? '+' : '';
+      return `<td><span class="${cls}">${sign}${v.toFixed(2)}%</span></td>`;
+    }
     case 'market_cap':     return `<td>${fmtLarge(s.market_cap)}</td>`;
-    case 'pe':             return `<td>${s.pe!=null?fmtNum(s.pe,1)+'x':NA}</td>`;
-    case 'forward_pe':     return `<td>${s.forward_pe!=null?fmtNum(s.forward_pe,1)+'x':NA}</td>`;
+    case 'pe': {
+      const v = s.pe;
+      if (v == null || v <= 0) return `<td>${NA}</td>`;
+      const cls = v < 10 ? 'cf-val-cheap' : v < 20 ? 'cf-val-fair' : v < 35 ? 'cf-val-rich' : 'cf-val-xrich';
+      return `<td><span class="${cls}">${fmtNum(v,1)}x</span></td>`;
+    }
+    case 'forward_pe': {
+      const v = s.forward_pe;
+      if (v == null || v <= 0) return `<td>${NA}</td>`;
+      const cls = v < 10 ? 'cf-val-cheap' : v < 20 ? 'cf-val-fair' : v < 35 ? 'cf-val-rich' : 'cf-val-xrich';
+      return `<td><span class="${cls}">${fmtNum(v,1)}x</span></td>`;
+    }
     case 'eps':            return `<td>${s.eps!=null?fmtNum(s.eps):NA}</td>`;
     case 'volume':         return `<td>${fmtVol(s.volume)}</td>`;
     case 'week52_high':    return `<td>${s.week52_high!=null?fmtP(s.week52_high):NA}</td>`;
     case 'week52_low':     return `<td>${s.week52_low!=null?fmtP(s.week52_low):NA}</td>`;
-    case 'div_yield':      return `<td>${s.div_yield!=null?fmtNum(s.div_yield,1)+'%':NA}</td>`;
-    case 'ps_ratio':       return `<td>${s.ps_ratio!=null?fmtNum(s.ps_ratio,1)+'x':NA}</td>`;
-    case 'pb_ratio':       return `<td>${s.pb_ratio!=null?fmtNum(s.pb_ratio,1)+'x':NA}</td>`;
-    case 'ev_ebitda':      return `<td>${s.ev_ebitda!=null?fmtNum(s.ev_ebitda,1)+'x':NA}</td>`;
-    case 'debt_equity':    return `<td>${fmtNum(s.debt_equity,2)}</td>`;
-    case 'roe':            return `<td>${fmtPctMono(s.roe)}</td>`;
-    case 'roa':            return `<td>${fmtPctMono(s.roa)}</td>`;
-    case 'gross_margin':   return `<td>${fmtPctMono(s.gross_margin)}</td>`;
-    case 'op_margin':      return `<td>${fmtPctMono(s.op_margin)}</td>`;
-    case 'net_margin':     return `<td>${fmtPctMono(s.net_margin)}</td>`;
-    case 'revenue_growth': return `<td>${fmtPctMono(s.revenue_growth)}</td>`;
-    case 'eps_growth':     return `<td>${fmtPctMono(s.eps_growth)}</td>`;
+    case 'div_yield': {
+      const v = s.div_yield;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v >= 5 ? 'cf-pos-muted' : v >= 2 ? 'cf-val-fair' : '';
+      return `<td><span class="${cls}">${fmtNum(v,1)}%</span></td>`;
+    }
+    case 'ps_ratio': {
+      const v = s.ps_ratio;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v < 1 ? 'cf-val-cheap' : v < 3 ? 'cf-val-fair' : v < 8 ? 'cf-val-rich' : 'cf-val-xrich';
+      return `<td><span class="${cls}">${fmtNum(v,1)}x</span></td>`;
+    }
+    case 'pb_ratio': {
+      const v = s.pb_ratio;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v < 1 ? 'cf-val-cheap' : v < 3 ? 'cf-val-fair' : v < 6 ? 'cf-val-rich' : 'cf-val-xrich';
+      return `<td><span class="${cls}">${fmtNum(v,1)}x</span></td>`;
+    }
+    case 'ev_ebitda': {
+      const v = s.ev_ebitda;
+      if (v == null || v <= 0) return `<td>${NA}</td>`;
+      const cls = v < 6 ? 'cf-val-cheap' : v < 12 ? 'cf-val-fair' : v < 20 ? 'cf-val-rich' : 'cf-val-xrich';
+      return `<td><span class="${cls}">${fmtNum(v,1)}x</span></td>`;
+    }
+    case 'debt_equity': {
+      const v = s.debt_equity;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v < 0.5 ? 'cf-lev-ok' : v < 1.5 ? 'cf-val-fair' : v < 3 ? 'cf-lev-warn' : 'cf-lev-danger';
+      return `<td><span class="${cls}">${fmtNum(v,2)}</span></td>`;
+    }
+    case 'roe': {
+      const v = s.roe;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v > 20 ? 'cf-pos-muted' : v > 8 ? 'cf-val-fair' : v > 0 ? '' : 'cf-neg-muted';
+      const sign = v > 0 ? '+' : '';
+      return `<td><span class="${cls}">${sign}${v.toFixed(1)}%</span></td>`;
+    }
+    case 'roa': {
+      const v = s.roa;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v > 10 ? 'cf-pos-muted' : v > 3 ? 'cf-val-fair' : v > 0 ? '' : 'cf-neg-muted';
+      const sign = v > 0 ? '+' : '';
+      return `<td><span class="${cls}">${sign}${v.toFixed(1)}%</span></td>`;
+    }
+    case 'gross_margin': {
+      const v = s.gross_margin;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v > 40 ? 'cf-pos-muted' : v > 15 ? 'cf-val-fair' : v > 0 ? '' : 'cf-neg-muted';
+      return `<td><span class="${cls}">${v.toFixed(1)}%</span></td>`;
+    }
+    case 'op_margin': {
+      const v = s.op_margin;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v > 20 ? 'cf-pos-muted' : v > 5 ? 'cf-val-fair' : v > 0 ? '' : 'cf-neg-muted';
+      return `<td><span class="${cls}">${v.toFixed(1)}%</span></td>`;
+    }
+    case 'net_margin': {
+      const v = s.net_margin;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v > 15 ? 'cf-pos-muted' : v > 3 ? 'cf-val-fair' : v > 0 ? '' : 'cf-neg-muted';
+      return `<td><span class="${cls}">${v.toFixed(1)}%</span></td>`;
+    }
+    case 'revenue_growth': {
+      const v = s.revenue_growth;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v > 20 ? 'cf-pos-strong' : v > 5 ? 'cf-pos-muted' : v > 0 ? '' : v > -10 ? 'cf-neg-muted' : 'cf-neg-strong';
+      const sign = v > 0 ? '+' : '';
+      return `<td><span class="${cls}">${sign}${v.toFixed(1)}%</span></td>`;
+    }
+    case 'eps_growth': {
+      const v = s.eps_growth;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v > 20 ? 'cf-pos-strong' : v > 0 ? 'cf-pos-muted' : v > -15 ? 'cf-neg-muted' : 'cf-neg-strong';
+      const sign = v > 0 ? '+' : '';
+      return `<td><span class="${cls}">${sign}${v.toFixed(1)}%</span></td>`;
+    }
     case 'beta':           return `<td>${s.beta!=null?fmtNum(s.beta,2):NA}</td>`;
     case 'analyst_rating': return `<td class="col-analyst_rating">${fmtRating(s.analyst_rating)}</td>`;
     case 'sector':
