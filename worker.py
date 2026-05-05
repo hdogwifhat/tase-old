@@ -62,6 +62,16 @@ def _parse_quote(s):
     div_rate   = s.get('trailingAnnualDividendRate')
     div_yield  = round(div_rate / price_ils * 100, 2) if (div_rate and price_ils) else None
     name       = s.get('longName') or s.get('shortName') or symbol
+
+    # 3M ADV in ILS: yfinance provides averageDailyVolume3Month (share count)
+    # Multiply by price to get ILS turnover
+    avg_vol_3m = s.get('averageDailyVolume3Month') or s.get('averageDailyVolume10Day')
+    adv_ils = None
+    if avg_vol_3m and price_ils:
+        raw_adv = avg_vol_3m * price_ils
+        # ILA stocks: already divided price by 100, volume is in shares
+        adv_ils = int(raw_adv)
+
     return {
         'ticker':      symbol.replace('.TA', ''),
         'name':        name,
@@ -74,6 +84,7 @@ def _parse_quote(s):
         'week52_high': high52,
         'week52_low':  low52,
         'div_yield':   div_yield,
+        'adv_ils':     adv_ils,   # 3-month average daily volume in ILS (Phase 2)
         'sector':      '',
     }
 

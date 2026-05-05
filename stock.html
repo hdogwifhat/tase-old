@@ -611,9 +611,9 @@ async function loadStock() {
   // Detail endpoint uses tase_financials (self-computed from statements),
   // so TASE-only stocks that were missing metrics now get them.
   const RATIO_FIELDS = ['ps_ratio','pb_ratio','ev_ebitda','debt_equity','current_ratio',
-                        'roe','roa','gross_margin','op_margin','net_margin',
+                        'quick_ratio','roe','roa','roic','gross_margin','op_margin','net_margin',
                         'revenue_growth','eps_growth','forward_pe','beta',
-                        'sector','industry'];
+                        'ev_fcf','wacc','adv_ils','sector','industry'];
   RATIO_FIELDS.forEach(f => {
     if (detailData[f] != null) stockInfo[f] = detailData[f];
   });
@@ -773,25 +773,27 @@ function renderStatistics() {
 
   const wrap = (val, cls) => cls ? `<span class="${cls}">${val}</span>` : val;
 
-  // One dense table spanning all 4 sub-sections, 4 columns wide (label|val  label|val)
+  // One dense table spanning all sub-sections, 4 columns wide (label|val  label|val)
   const rows = [
     // ── Valuation
     `<tr><td colspan="4" class="st-grp-hd">Valuation</td></tr>`,
     `<tr>${col('P/E (TTM)',    n(s.pe,1,'x'),    valCls(s.pe,[10,20,35]))}${col('Fwd P/E', n(s.forward_pe,1,'x'), valCls(s.forward_pe,[10,20,35]))}</tr>`,
-    `<tr>${col('EV/EBITDA',   n(s.ev_ebitda,1,'x'), valCls(s.ev_ebitda,[6,12,20]))}${col('P/S', n(s.ps_ratio,1,'x'), valCls(s.ps_ratio,[1,3,8]))}</tr>`,
-    `<tr>${col('P/B',         n(s.pb_ratio,1,'x'),  valCls(s.pb_ratio,[1,3,6]))}${col('Mkt Cap', s.market_cap?fmtL(s.market_cap).replace(/<[^>]+>/g,''):'—')}</tr>`,
-    `<tr>${col('Beta',        n(s.beta,2))}${col('Div Yield', s.div_yield!=null?s.div_yield.toFixed(2)+'%':'—')}</tr>`,
-    // ── Profitability
-    `<tr><td colspan="4" class="st-grp-hd" style="padding-top:8px">Profitability</td></tr>`,
+    `<tr>${col('EV/EBITDA',   n(s.ev_ebitda,1,'x'), valCls(s.ev_ebitda,[6,12,20]))}${col('EV/FCF', s.ev_fcf!=null&&s.ev_fcf>0?n(s.ev_fcf,1,'x'):'—', valCls(s.ev_fcf,[10,20,35]))}</tr>`,
+    `<tr>${col('P/S',         n(s.ps_ratio,1,'x'), valCls(s.ps_ratio,[1,3,8]))}${col('P/B', n(s.pb_ratio,1,'x'), valCls(s.pb_ratio,[1,3,6]))}</tr>`,
+    `<tr>${col('Mkt Cap', s.market_cap?fmtL(s.market_cap).replace(/<[^>]+>/g,''):'—')}${col('Beta', n(s.beta,2))}</tr>`,
+    `<tr>${col('Div Yield', s.div_yield!=null?s.div_yield.toFixed(2)+'%':'—')}${col('EPS (TTM)', s.eps!=null?'₪'+fmtN(s.eps):'—')}</tr>`,
+    // ── Profitability & Returns
+    `<tr><td colspan="4" class="st-grp-hd" style="padding-top:8px">Profitability &amp; Returns</td></tr>`,
+    `<tr>${col('ROIC', wrap(pct(s.roic), growCls(s.roic)))}${col('WACC', s.wacc!=null?s.wacc.toFixed(1)+'%':'—')}</tr>`,
     `<tr>${col('ROE', wrap(pct(s.roe), growCls(s.roe)))}${col('ROA', wrap(pct(s.roa), growCls(s.roa)))}</tr>`,
     `<tr>${col('Gross Margin', wrap(pct(s.gross_margin), margCls(s.gross_margin)))}${col('Op Margin', wrap(pct(s.op_margin), margCls(s.op_margin)))}</tr>`,
     `<tr>${col('Net Margin', wrap(pct(s.net_margin), margCls(s.net_margin)))}${col('Rev Growth', wrap(pct(s.revenue_growth), growCls(s.revenue_growth)))}</tr>`,
-    `<tr>${col('EPS Growth', wrap(pct(s.eps_growth), growCls(s.eps_growth)))}${col('EPS (TTM)', s.eps!=null?'₪'+fmtN(s.eps):'—')}</tr>`,
+    `<tr>${col('EPS Growth', wrap(pct(s.eps_growth), growCls(s.eps_growth)))}${col('', '')}</tr>`,
     // ── Financial Health
-    `<tr><td colspan="4" class="st-grp-hd" style="padding-top:8px">Financial Health</td></tr>`,
+    `<tr><td colspan="4" class="st-grp-hd" style="padding-top:8px">Financial Health &amp; Liquidity</td></tr>`,
     `<tr>${col('Debt / Equity', wrap(n(s.debt_equity,2), s.debt_equity!=null?(s.debt_equity>3?'muted-pct-neg':s.debt_equity>1.5?'muted-pct':''):''))}${col('Current Ratio', n(s.current_ratio,2))}</tr>`,
+    `<tr>${col('Quick Ratio',   wrap(n(s.quick_ratio,2), s.quick_ratio!=null?(s.quick_ratio<0.7?'muted-pct-neg':s.quick_ratio<1?'muted-pct':'muted-pct-pos'):''))}${col('ADV (ILS)', s.adv_ils!=null?(s.adv_ils>=1e6?(s.adv_ils/1e6).toFixed(1)+'M':(s.adv_ils/1e3).toFixed(0)+'K'):'—')}</tr>`,
     `<tr>${col('52W High', s.week52_high!=null?'₪'+s.week52_high:'—')}${col('52W Low', s.week52_low!=null?'₪'+s.week52_low:'—')}</tr>`,
-    `<tr>${col('Price', s.price!=null?'₪'+fmtN(s.price):'—')}${col('Volume', s.volume?fmtL(s.volume).replace(/<[^>]+>/g,''):'—')}</tr>`,
     `<tr>${col('IPO Date', detailData.ipo_date||'—')}${col('Exchange', 'TASE')}</tr>`,
   ].join('');
 

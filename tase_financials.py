@@ -197,6 +197,71 @@ def _compute_missing(ratios, info, fin, bs):
             bvps = eq / shares
             ratios['pb_ratio'] = _f(price / bvps)
 
+    # ── Phase 2 metrics ────────────────────────────────────────────────────
+
+    # ROIC = NOPAT / Invested Capital
+    # Israeli corporate tax rate = 23%
+    if ratios.get('roic') is None:
+        oi = _latest(fin, 'Operating Income', 'EBIT', 'EBITDA')
+        eq_r  = _latest(bs, 'Stockholders Equity', 'Common Stock Equity') or 0
+        td_r  = _latest(bs, 'Total Debt', 'Long Term Debt And Capital Lease') or 0
+        csh_r = _latest(bs, 'Cash And Cash Equivalents',
+                        'Cash Cash Equivalents And Short Term Investments') or 0
+        ic = eq_r + td_r - csh_r
+        if oi is not None and ic > 0:
+            nopat = oi * (1 - 0.23)
+            ratios['roic'] = round(nopat / ic * 100, 2)
+
+    # Quick Ratio = (Current Assets − Inventory) / Current Liabilities
+    if ratios.get('quick_ratio') is None:
+        ca  = _latest(bs, 'Current Assets')
+        cl  = _latest(bs, 'Current Liabilities')
+        inv = _latest(bs, 'Inventory', 'Inventories')
+        if ca and cl and cl > 0:
+            ratios['quick_ratio'] = _f((ca - (inv or 0)) / cl)
+
+    # EV/FCF — uses EV from info, FCF from cashflow or computed
+    if ratios.get('ev_fcf') is None:
+        mkt_c = info.get('marketCap') or 0
+        td_c  = _latest(bs, 'Total Debt', 'Long Term Debt And Capital Lease') or 0
+        csh_c = _latest(bs, 'Cash And Cash Equivalents',
+                        'Cash Cash Equivalents And Short Term Investments') or 0
+        ev_c  = mkt_c + td_c - csh_c
+        if ev_c > 0:
+            fcf = _latest(cf, 'Free Cash Flow')
+            if fcf is None:
+                ocf   = _latest(cf, 'Operating Cash Flow')
+                capex = _latest(cf, 'Capital Expenditure')
+                if ocf is not None and capex is not None:
+                    fcf = ocf + capex   # CapEx is stored negative in yfinance
+            if fcf and fcf > 0:
+                ratios['ev_fcf'] = _f(ev_c / fcf)
+
+    # WACC = E/V × Ke + D/V × Kd × (1−T)
+    # Ke = Rf + β × MRP  [Rf = IL 10Y proxy 4.38%, MRP = 5.5% for Israel]
+    # Kd = Interest Expense / Total Debt (capped at 15%)
+    # T  = 23% (Israeli corporate tax)
+    if ratios.get('wacc') is None:
+        mkt_w  = info.get('marketCap') or 0
+        td_w   = _latest(bs, 'Total Debt', 'Long Term Debt And Capital Lease') or 0
+        if mkt_w:
+            v_w = mkt_w + td_w
+            if v_w > 0:
+                beta_w = ratios.get('beta') or 1.0
+                rf = 0.0438      # IL 10Y yield (will be refreshed by market data)
+                mrp = 0.055      # Israel equity risk premium (Damodaran 2024)
+                ke = rf + beta_w * mrp
+                # Cost of debt
+                ie = _latest(fin, 'Interest Expense', 'Net Interest Income')
+                if td_w and ie:
+                    kd = min(abs(ie) / td_w, 0.15)
+                else:
+                    kd = 0.045   # proxy: 4.5% if unknown
+                e_w = mkt_w / v_w
+                d_w = td_w / v_w
+                wacc_val = (e_w * ke) + (d_w * kd * (1 - 0.23))
+                ratios['wacc'] = round(wacc_val * 100, 2)
+
 
 def _derive_ipo_date(info):
     """Best-effort IPO date: FMP ipoExpectedDate → yfinance firstTradeDateMilliseconds."""
@@ -248,14 +313,18 @@ def fetch_financials(ticker: str) -> dict:
         'ev_ebitda':      _f(info.get('enterpriseToEbitda')),
         'debt_equity':    de,
         'current_ratio':  _f(info.get('currentRatio')),
+        'quick_ratio':    None,   # computed below from balance sheet
         'roe':            _pct(info.get('returnOnEquity')),
         'roa':            _pct(info.get('returnOnAssets')),
+        'roic':           None,   # computed below — Phase 2
         'revenue_growth': _pct(info.get('revenueGrowth')),
         'eps_growth':     _pct(info.get('earningsGrowth')),
         'gross_margin':   _pct(info.get('grossMargins')),
         'op_margin':      _pct(info.get('operatingMargins')),
         'net_margin':     _pct(info.get('profitMargins')),
         'beta':           _f(info.get('beta')),
+        'ev_fcf':         None,   # computed below — Phase 2
+        'wacc':           None,   # computed below — Phase 2
         'book_value':     _f(info.get('bookValue')),
         'trailing_eps':   _f(info.get('trailingEps')),
     }

@@ -110,6 +110,11 @@ def merge_enrichment(stocks, enrich_data=None):
         row['analyst_hold']   = e.get('analyst_hold')
         row['analyst_sell']   = e.get('analyst_sell')
         row['price_target']   = e.get('price_target')
+        # Phase 2 metrics
+        row['quick_ratio']    = e.get('quick_ratio')
+        row['roic']           = e.get('roic')
+        row['ev_fcf']         = e.get('ev_fcf')
+        row['wacc']           = e.get('wacc')
         out.append(row)
     return out
 
@@ -408,6 +413,11 @@ def fetch_stock_detail(ticker):
         'eps_growth':     tfin.get('eps_growth'),
         'forward_pe':     tfin.get('forward_pe'),
         'beta':           tfin.get('beta'),
+        # Phase 2
+        'quick_ratio':    tfin.get('quick_ratio'),
+        'roic':           tfin.get('roic'),
+        'ev_fcf':         tfin.get('ev_fcf'),
+        'wacc':           tfin.get('wacc'),
         'sector':         e.get('sector')      or tfin.get('sector'),
         'industry':       e.get('industry')    or tfin.get('industry'),
     }

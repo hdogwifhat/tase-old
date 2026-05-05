@@ -879,6 +879,10 @@
   <div class="pill-sep"></div>
   <button class="pill" data-preset="quality">Quality</button>
   <button class="pill" data-preset="profitability">Profitable</button>
+  <div class="pill-sep"></div>
+  <button class="pill" data-preset="compounders">Compounders</button>
+  <button class="pill" data-preset="fcf">FCF Value</button>
+  <button class="pill" data-preset="liquid">Liquid</button>
 </div>
 
 <!-- ── Column visibility panel ──────────────────────────────────────────── -->
@@ -915,6 +919,16 @@
     <input type="number" id="f-revg-min" placeholder="10" oninput="onFI()"></div>
   <div class="fg"><label>D/E &lt;</label>
     <input type="number" id="f-de-max"   placeholder="1" min="0" step="0.1" oninput="onFI()"></div>
+  <div class="f-sep"></div>
+  <div class="fg"><label>ROIC &gt; %</label>
+    <input type="number" id="f-roic-min" placeholder="15" oninput="onFI()"></div>
+  <div class="fg"><label>EV/FCF &lt;</label>
+    <input type="number" id="f-evfcf-max" placeholder="15" min="0" step="0.5" oninput="onFI()"></div>
+  <div class="fg"><label>Quick &gt;</label>
+    <input type="number" id="f-quick-min" placeholder="1" min="0" step="0.1" oninput="onFI()"></div>
+  <div class="fg"><label>ADV &gt; ₪M</label>
+    <input type="number" id="f-adv-min" placeholder="500" min="0" oninput="onFI()"></div>
+  <div class="f-sep"></div>
   <div class="fg">
     <label>Analyst</label>
     <select id="f-rating" onchange="applyFilters()">
@@ -1083,6 +1097,13 @@ const COLUMNS = [
   { id:'revenue_growth', label:'Rev Grth',     defaultOn:true  },
   { id:'eps_growth',     label:'EPS Grth',     defaultOn:false },
   { id:'beta',           label:'Beta',         defaultOn:false },
+  // ── Phase 2: Institutional metrics ──
+  { id:'roic',           label:'ROIC',         defaultOn:false },
+  { id:'ev_fcf',         label:'EV/FCF',       defaultOn:false },
+  { id:'quick_ratio',    label:'Quick',        defaultOn:false },
+  { id:'wacc',           label:'WACC',         defaultOn:false },
+  { id:'adv_ils',        label:'ADV (ILS)',     defaultOn:false },
+  // ─────────────────────────────────────
   { id:'analyst_rating', label:'Analyst',      defaultOn:true  },
   { id:'sector',         label:'Sector',       defaultOn:false },
   { id:'spark',          label:'1M',           defaultOn:true  },
@@ -1101,6 +1122,10 @@ const PILL_PRESETS = {
   'recentipo':   { '_recentipo': true },
   'quality':     { 'f-roe-min': 15, 'f-de-max': 0.5 },
   'profitability':{ 'f-roe-min': 8, 'f-revg-min': 5 },
+  // ── Phase 2: Institutional presets ──
+  'compounders': { 'f-roic-min': 15, 'f-revg-min': 10, 'f-de-max': 1 },
+  'fcf':         { 'f-evfcf-max': 15, 'f-mcap-min': 500 },
+  'liquid':      { 'f-adv-min': 500, 'f-mcap-min': 1000 },
 };
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1370,6 +1395,41 @@ function renderCell(s, id) {
       return `<td><span class="${cls}">${sign}${v.toFixed(1)}%</span></td>`;
     }
     case 'beta':           return `<td>${s.beta!=null?fmtNum(s.beta,2):NA}</td>`;
+    // ── Phase 2: Institutional columns ──────────────────────────────────
+    case 'roic': {
+      const v = s.roic;
+      if (v == null) return `<td>${NA}</td>`;
+      // ROIC > WACC = value creation. >15% = excellent; 8-15% = good; <0% = destroys value
+      const cls = v > 20 ? 'cf-pos-strong' : v > 12 ? 'cf-pos-muted' : v > 0 ? 'cf-val-fair' : 'cf-neg-muted';
+      const sign = v > 0 ? '+' : '';
+      return `<td><span class="${cls}">${sign}${v.toFixed(1)}%</span></td>`;
+    }
+    case 'ev_fcf': {
+      const v = s.ev_fcf;
+      if (v == null || v <= 0) return `<td>${NA}</td>`;
+      const cls = v < 10 ? 'cf-val-cheap' : v < 20 ? 'cf-val-fair' : v < 35 ? 'cf-val-rich' : 'cf-val-xrich';
+      return `<td><span class="${cls}">${fmtNum(v,1)}x</span></td>`;
+    }
+    case 'quick_ratio': {
+      const v = s.quick_ratio;
+      if (v == null) return `<td>${NA}</td>`;
+      const cls = v >= 1.5 ? 'cf-lev-ok' : v >= 1.0 ? 'cf-val-fair' : v >= 0.7 ? 'cf-lev-warn' : 'cf-lev-danger';
+      return `<td><span class="${cls}">${fmtNum(v,2)}</span></td>`;
+    }
+    case 'wacc': {
+      const v = s.wacc;
+      if (v == null) return `<td>${NA}</td>`;
+      return `<td><span class="muted-pct">${v.toFixed(1)}%</span></td>`;
+    }
+    case 'adv_ils': {
+      const v = s.adv_ils;
+      if (v == null) return `<td>${NA}</td>`;
+      // ADV is in ILS — color by liquidity (portfolio managers need >₪2M/day)
+      const cls = v >= 2e6 ? 'cf-pos-muted' : v >= 500e3 ? 'cf-val-fair' : 'cf-neg-muted';
+      const fmt = v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v.toFixed(0);
+      return `<td><span class="${cls}">₪${fmt}</span></td>`;
+    }
+    // ────────────────────────────────────────────────────────────────────
     case 'analyst_rating': return `<td class="col-analyst_rating">${fmtRating(s.analyst_rating)}</td>`;
     case 'sector':
       return `<td class="col-sector">${s.sector?`<span class="sector-pill">${s.sector}</span>`:NA}</td>`;
@@ -1527,8 +1587,9 @@ function setPill(preset) {
   document.querySelectorAll('.pill').forEach(b => b.classList.toggle('active', b.dataset.preset === preset));
 
   // Clear filter inputs
-  ['f-pe-max','f-ps-max','f-mcap-min','f-div-min','f-chg-min','f-roe-min','f-revg-min','f-de-max']
-    .forEach(id => { document.getElementById(id).value = ''; });
+  ['f-pe-max','f-ps-max','f-mcap-min','f-div-min','f-chg-min','f-roe-min','f-revg-min','f-de-max',
+   'f-roic-min','f-evfcf-max','f-quick-min','f-adv-min']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   document.getElementById('f-search').value = '';
   document.getElementById('f-rating').value = '';
 
@@ -1559,16 +1620,21 @@ function onFI() {
 function applyFilters() {
   // Favorites mode: re-filter favorites list and skip normal pipeline
   if (focusMode === 'favorites') { openFavoritesView(); return; }
-  const q      = document.getElementById('f-search').value.toLowerCase();
-  const peMax  = parseFloat(document.getElementById('f-pe-max').value);
-  const psMax  = parseFloat(document.getElementById('f-ps-max').value);
-  const mcapMn = parseFloat(document.getElementById('f-mcap-min').value)*1e6;
-  const divMn  = parseFloat(document.getElementById('f-div-min').value);
-  const chgMn  = parseFloat(document.getElementById('f-chg-min').value);
-  const roeMn  = parseFloat(document.getElementById('f-roe-min').value);
-  const revgMn = parseFloat(document.getElementById('f-revg-min').value);
-  const deMax  = parseFloat(document.getElementById('f-de-max').value);
-  const rating = document.getElementById('f-rating').value;
+  const q       = document.getElementById('f-search').value.toLowerCase();
+  const peMax   = parseFloat(document.getElementById('f-pe-max').value);
+  const psMax   = parseFloat(document.getElementById('f-ps-max').value);
+  const mcapMn  = parseFloat(document.getElementById('f-mcap-min').value)*1e6;
+  const divMn   = parseFloat(document.getElementById('f-div-min').value);
+  const chgMn   = parseFloat(document.getElementById('f-chg-min').value);
+  const roeMn   = parseFloat(document.getElementById('f-roe-min').value);
+  const revgMn  = parseFloat(document.getElementById('f-revg-min').value);
+  const deMax   = parseFloat(document.getElementById('f-de-max').value);
+  const rating  = document.getElementById('f-rating').value;
+  // Phase 2 filters
+  const roicMn  = parseFloat((document.getElementById('f-roic-min')||{}).value);
+  const evfcfMx = parseFloat((document.getElementById('f-evfcf-max')||{}).value);
+  const quickMn = parseFloat((document.getElementById('f-quick-min')||{}).value);
+  const advMn   = parseFloat((document.getElementById('f-adv-min')||{}).value)*1e6;
 
   const now = new Date();
   const twoYearsAgo = new Date(now.getFullYear()-2, now.getMonth(), now.getDate()).toISOString().slice(0,10);
@@ -1577,14 +1643,19 @@ function applyFilters() {
     if (q && !s.ticker.toLowerCase().includes(q) &&
              !s.name.toLowerCase().includes(q) &&
              !(s.sector||'').toLowerCase().includes(q)) return false;
-    if (!isNaN(peMax)  && (s.pe==null||s.pe<0||s.pe>peMax))                  return false;
-    if (!isNaN(psMax)  && (s.ps_ratio==null||s.ps_ratio>psMax))               return false;
-    if (!isNaN(mcapMn) && (s.market_cap==null||s.market_cap<mcapMn))          return false;
-    if (!isNaN(divMn)  && (s.div_yield==null||s.div_yield<divMn))             return false;
-    if (!isNaN(chgMn)  && (s.change_pct==null||s.change_pct<chgMn))           return false;
-    if (!isNaN(roeMn)  && (s.roe==null||s.roe<roeMn))                         return false;
-    if (!isNaN(revgMn) && (s.revenue_growth==null||s.revenue_growth<revgMn))  return false;
-    if (!isNaN(deMax)  && (s.debt_equity==null||s.debt_equity>deMax))         return false;
+    if (!isNaN(peMax)   && (s.pe==null||s.pe<0||s.pe>peMax))                    return false;
+    if (!isNaN(psMax)   && (s.ps_ratio==null||s.ps_ratio>psMax))                 return false;
+    if (!isNaN(mcapMn)  && (s.market_cap==null||s.market_cap<mcapMn))            return false;
+    if (!isNaN(divMn)   && (s.div_yield==null||s.div_yield<divMn))               return false;
+    if (!isNaN(chgMn)   && (s.change_pct==null||s.change_pct<chgMn))             return false;
+    if (!isNaN(roeMn)   && (s.roe==null||s.roe<roeMn))                           return false;
+    if (!isNaN(revgMn)  && (s.revenue_growth==null||s.revenue_growth<revgMn))    return false;
+    if (!isNaN(deMax)   && (s.debt_equity==null||s.debt_equity>deMax))           return false;
+    // Phase 2 filters
+    if (!isNaN(roicMn)  && (s.roic==null||s.roic<roicMn))                        return false;
+    if (!isNaN(evfcfMx) && (s.ev_fcf==null||s.ev_fcf<=0||s.ev_fcf>evfcfMx))     return false;
+    if (!isNaN(quickMn) && (s.quick_ratio==null||s.quick_ratio<quickMn))         return false;
+    if (!isNaN(advMn)   && (s.adv_ils==null||s.adv_ils<advMn))                   return false;
     if (rating && s.analyst_rating!==rating)                                   return false;
     if (recentIpoFilter && !(s.ipo_date && s.ipo_date >= twoYearsAgo))        return false;
     return true;

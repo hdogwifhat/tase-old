@@ -100,11 +100,12 @@ def _empty():
         'description': None, 'ceo': None, 'employees': None,
         'website': None, 'logo': None, 'ipo_date': None,
         'ps_ratio': None, 'pb_ratio': None, 'ev_ebitda': None,
-        'debt_equity': None, 'current_ratio': None,
-        'roe': None, 'roa': None,
+        'debt_equity': None, 'current_ratio': None, 'quick_ratio': None,
+        'roe': None, 'roa': None, 'roic': None,
         'gross_margin': None, 'op_margin': None, 'net_margin': None,
         'revenue_growth': None, 'eps_growth': None,
         'forward_pe': None, 'beta': None,
+        'ev_fcf': None, 'wacc': None,
         'analyst_rating': None,
         'analyst_buy': None, 'analyst_hold': None, 'analyst_sell': None,
     }
@@ -166,8 +167,10 @@ def build_enrichment(yf_stocks):
             'ev_ebitda':      fin.get('ev_ebitda'),
             'debt_equity':    fin.get('debt_equity'),
             'current_ratio':  fin.get('current_ratio'),
+            'quick_ratio':    fin.get('quick_ratio'),    # Phase 2
             'roe':            fin.get('roe'),
             'roa':            fin.get('roa'),
+            'roic':           fin.get('roic'),           # Phase 2
             'gross_margin':   fin.get('gross_margin'),
             'op_margin':      fin.get('op_margin'),
             'net_margin':     fin.get('net_margin'),
@@ -175,6 +178,8 @@ def build_enrichment(yf_stocks):
             'eps_growth':     fin.get('eps_growth'),
             'forward_pe':     fin.get('forward_pe'),
             'beta':           fin.get('beta'),
+            'ev_fcf':         fin.get('ev_fcf'),         # Phase 2
+            'wacc':           fin.get('wacc'),           # Phase 2
             # Analyst (Finnhub)
             'analyst_rating': _rating(rec),
             'analyst_buy':    (rec.get('strongBuy', 0) + rec.get('buy', 0)) if rec else None,
