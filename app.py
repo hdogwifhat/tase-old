@@ -224,25 +224,31 @@ _MAIN_INDICES = [
 ]
 
 _SECTOR_INDICES_LABELS = [
-    ('ביטחוניות', ['defense', 'aerospace', 'military', 'security']),
-    ('טכנולוגיה',  ['technology', 'software', 'semiconductor', 'electronic', 'communication']),
-    ('בנקים',      ['bank', 'financial service', 'insurance', 'capital market', 'diversified financ']),
-    ('נדל"ן',      ['real estate', 'reit']),
-    ('ביומד',      ['healthcare', 'biotech', 'pharmaceutical', 'medical', 'life science', 'drug']),
-    ('אנרגיה',     ['energy', 'oil', 'gas', 'utilities', 'power']),
+    # Keywords match against (sector + ' ' + industry).lower() from enrichment data
+    ('ביטחוניות', ['aerospace', 'defense']),                         # Industrials/Aerospace & Defense
+    ('טכנולוגיה',  ['technology', 'semiconductor', 'software']),     # Technology/*
+    ('בנקים',      ['financial services', 'bank', 'insurance']),     # Financial Services/*
+    ('נדל"ן',      ['real estate']),                                 # Real Estate/*
+    ('ביומד',      ['healthcare', 'biotech', 'pharmaceutical', 'drug', 'medical']),  # Healthcare/*
+    ('אנרגיה',     ['energy', 'oil & gas', 'utilities']),            # Energy/* + Utilities/*
 ]
 
 def _sector_perf_from_stocks():
     """Compute sector performance directly from the cached stock universe.
     Market-cap weighted average change_pct per sector.
-    No external API needed.
+    Merges enrichment (which carries sector tags) before grouping.
     """
     stocks, _ = _stocks_from_redis_or_file()
+    enrich    = _enrich_from_redis_or_file()          # {ticker: {sector, industry, ...}}
+
     result = []
     for label, keywords in _SECTOR_INDICES_LABELS:
         group = []
         for s in stocks:
-            tags = ((s.get('sector') or '') + ' ' + (s.get('industry') or '')).lower()
+            e    = enrich.get(s.get('ticker', ''), {})
+            sec  = (e.get('sector')   or s.get('sector')   or '').lower()
+            ind  = (e.get('industry') or s.get('industry') or '').lower()
+            tags = sec + ' ' + ind
             if any(kw in tags for kw in keywords):
                 group.append(s)
         if not group:
