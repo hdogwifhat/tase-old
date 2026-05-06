@@ -19,7 +19,7 @@ Environment:
     FMP_API_KEY         Optional. For company profiles.
 """
 
-import argparse, time, sys, os, math
+import argparse, time, sys, os, math, re as _re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -171,11 +171,121 @@ def run_enrichment(stocks=None):
         release_lock('enrich')
 
 
+# ── Bond fetcher ──────────────────────────────────────────────────────────────
+# Corporate bonds on TASE follow the convention TICKER-BN.TA (e.g. LUMI-B7.TA)
+# B = bond series, P = warrant (כתב אופציה), C = convertible bond
+
+_BOND_SERIES_PAT = _re.compile(r'^([A-Z]+)[-.]B(\d+)\.TA$')  # strict: only -B bonds
+
+def _parse_bond(s):
+    sym = s.get('symbol', '')
+    m = _BOND_SERIES_PAT.match(sym)
+    if not m: return None
+
+    issuer_tk = m.group(1)
+    series_n  = int(m.group(2))
+
+    price_ila = s.get('regularMarketPrice')
+    if not price_ila or price_ila <= 0: return None
+
+    # For TASE bonds: par = 1 ILS per unit; yfinance reports price in ILA (agorot)
+    # 1 ILS = 100 ILA, so price 102.60 ILA means the bond trades at 102.60% of par.
+    # We display this as-is (NOT divided by 100) — standard Israeli bond market notation.
+    price_pct  = round(float(price_ila), 2)     # = % of par (e.g. 102.60)
+    chg        = s.get('regularMarketChangePercent')
+    vol        = s.get('regularMarketVolume')
+    mktcap     = s.get('marketCap')              # total outstanding value in ILS
+    h52        = s.get('fiftyTwoWeekHigh')       # also in ILA = % of par at 52W high
+    l52        = s.get('fiftyTwoWeekLow')
+    name       = s.get('longName') or s.get('shortName') or ''
+
+    return {
+        'symbol':        sym.replace('.TA', ''),
+        'issuer':        issuer_tk,
+        'series':        f'B{series_n}',
+        'series_num':    series_n,
+        'name':          name,
+        'price_pct':     price_pct,
+        'change_pct':    round(float(chg), 2) if chg is not None else None,
+        'volume':        int(vol)    if vol    else None,
+        'market_value':  int(mktcap) if mktcap else None,  # total outstanding (ILS)
+        'high52_pct':    round(float(h52), 2) if h52 else None,
+        'low52_pct':     round(float(l52), 2) if l52 else None,
+    }
+
+
+def fetch_bonds():
+    """Fetch all corporate bonds (-BN.TA) from TASE and store in Redis."""
+    print('[Worker] Fetching TASE bond data…', flush=True)
+    q = EquityQuery('eq', ['exchange', 'TLV'])
+    all_quotes, offset = [], 0
+    while True:
+        result = screen(q, sortField='intradaymarketcap', sortAsc=False, offset=offset, size=100)
+        quotes = result.get('quotes', [])
+        if not quotes: break
+        all_quotes.extend(quotes)
+        offset += 100
+        if offset >= result.get('total', 0): break
+
+    bonds = [b for b in (_parse_bond(s) for s in all_quotes) if b]
+    bonds.sort(key=lambda x: x.get('market_value') or 0, reverse=True)
+    print(f'[Worker] Found {len(bonds)} corporate bonds.', flush=True)
+    rset('tase:bonds', {'data': bonds, 'timestamp': time.time()}, ttl=3600)
+    return bonds
+
+
+# ── Index chart pre-cache ─────────────────────────────────────────────────────
+# Pre-fetching index chart data eliminates the 3-8 second yfinance latency
+# that users experience when the homepage chart has to fetch on-demand.
+
+_IDX_CHART_SYMS   = ['TA35.TA', 'TA90.TA', '195.TA']
+_IDX_CHART_RANGES = {
+    '5d':  ('5d',  '30m', 360),    # (yf period, yf interval, cache TTL seconds)
+    '1mo': ('1mo', '1h',  3600),
+    '3mo': ('3mo', '1d',  3600),
+    '6mo': ('6mo', '1d',  86400),
+    '1y':  ('1y',  '1wk', 86400),
+}
+
+def prefetch_index_charts():
+    """Pre-populate Redis with index chart OHLCV so frontend reads are instant."""
+    print('[Worker] Pre-caching index charts…', flush=True)
+    for sym in _IDX_CHART_SYMS:
+        for rng, (period, interval, ttl) in _IDX_CHART_RANGES.items():
+            cache_key = f'tase:idxhist:{sym}:{rng}'
+            # Skip if still fresh
+            cached = rget(cache_key)
+            age = time.time() - (cached.get('_ts', 0) if cached else 0)
+            if cached and cached.get('bars') and age < ttl * 0.8:
+                continue
+            try:
+                h = yf.Ticker(sym).history(period=period, interval=interval)
+                bars = []
+                for ts, row in h.iterrows():
+                    close = row.get('Close')
+                    if close is None or (isinstance(close, float) and math.isnan(close)):
+                        continue
+                    t = int(ts.timestamp()) if hasattr(ts, 'timestamp') else int(ts.value // 1e9)
+                    def _fv(k, _c=close):
+                        v = row.get(k)
+                        return round(float(v), 2) if v is not None and not (isinstance(v, float) and math.isnan(v)) else round(float(_c), 2)
+                    bars.append({'time': t, 'open': _fv('Open'), 'high': _fv('High'),
+                                 'low': _fv('Low'), 'close': round(float(close), 2),
+                                 'value': round(float(close), 2)})
+                rset(cache_key, {'bars': bars, 'interval': interval, '_ts': time.time()}, ttl=ttl)
+                print(f'[Worker]   {sym} {rng}: {len(bars)} bars cached.', flush=True)
+            except Exception as e:
+                print(f'[Worker]   {sym} {rng}: error — {e}', flush=True)
+    print('[Worker] Index chart pre-cache done.', flush=True)
+
+
 # ── Full run ──────────────────────────────────────────────────────────────────
 
 def run_full(enrich=True):
     print(f'[Worker] === Full run at {time.strftime("%Y-%m-%d %H:%M:%S")} ===', flush=True)
     stocks = run_fetch()
+    prefetch_index_charts()   # pre-warm chart cache on every full run
+    fetch_bonds()             # refresh bond data
     if enrich:
         run_enrichment(stocks)
 

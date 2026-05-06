@@ -746,6 +746,56 @@ def dcf_page():
     return send_from_directory(BASE_DIR, 'dcf.html')
 
 
+@app.route('/api/bonds')
+def bonds_api():
+    """
+    Return TASE corporate bonds enriched with issuer financial data.
+    Bond data comes from the worker's tase:bonds Redis key.
+    Issuer data is joined from the stock cache + enrichment.
+    """
+    cached = rget('tase:bonds')
+    if not cached or not cached.get('data'):
+        return jsonify({'bonds': [], 'timestamp': 0,
+                        'error': 'Bond data not yet fetched. Worker must run first.'})
+
+    bonds = cached.get('data', [])
+    ts    = cached.get('timestamp', 0)
+
+    # Build issuer lookup maps
+    stocks, _  = _stocks_from_redis_or_file()
+    stock_map  = {s['ticker']: s for s in stocks}
+    enrich     = _enrich_from_redis_or_file()   # {ticker: {sector, de, roe, ...}}
+
+    enriched = []
+    for b in bonds:
+        row    = dict(b)
+        issuer = b.get('issuer', '')
+        s      = stock_map.get(issuer, {})
+        e      = enrich.get(issuer, {})
+
+        row['issuer_name']    = (e.get('company_name') or s.get('name') or issuer)
+        row['issuer_price']   = s.get('price')
+        row['issuer_mktcap']  = s.get('market_cap')
+        row['sector']         = (e.get('sector')       or s.get('sector') or '')
+        row['debt_equity']    = e.get('debt_equity')
+        row['current_ratio']  = e.get('current_ratio')
+        row['roe']            = e.get('roe')
+        row['roa']            = e.get('roa')
+        row['net_margin']     = e.get('net_margin')
+        row['op_margin']      = e.get('op_margin')
+        row['revenue_growth'] = e.get('revenue_growth')
+        row['ev_ebitda']      = e.get('ev_ebitda')
+        row['analyst_rating'] = e.get('analyst_rating')
+        # Premium/discount vs par (bonds should be near 100)
+        pct = b.get('price_pct') or 0
+        row['vs_par'] = round(pct - 100, 2)  # positive = premium, negative = discount
+        # Maya filing link (uses the full bond ticker)
+        row['maya_url'] = f'https://maya.tase.co.il/reports/company?symbol={b["symbol"]}'
+        enriched.append(row)
+
+    return jsonify({'bonds': enriched, 'timestamp': ts, 'count': len(enriched)})
+
+
 _fx_mem = {'data': None, 'ts': 0}
 
 @app.route('/api/fx')

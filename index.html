@@ -531,6 +531,65 @@
     .idx-perf-pos { color: #22c55e; background: rgba(34,197,94,0.12); display: inline-block; }
     .idx-perf-neg { color: #ef4444; background: rgba(239,68,68,0.12); display: inline-block; }
     .idx-type-btn { font-size: 13px; padding: 2px 8px; }
+
+    /* ── Bond Hub ──────────────────────────────────────────────────────────── */
+    .bond-edu {
+      background: var(--surface2); border: 1px solid var(--border2); border-left: 3px solid var(--amber);
+      border-radius: 5px; padding: 10px 14px; margin-bottom: 14px; font-size: 11px; color: var(--text3);
+    }
+    .bond-edu strong { color: var(--amber); }
+    .bond-summary-strip {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px;
+      background: var(--border2); border: 1px solid var(--border2); border-radius: 5px;
+      overflow: hidden; margin-bottom: 12px;
+    }
+    .bss-cell { background: var(--surface); padding: 7px 12px; }
+    .bss-lbl  { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase;
+                letter-spacing: .06em; margin-bottom: 2px; }
+    .bss-val  { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; color: var(--text); }
+    .bond-filters {
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;
+    }
+    .bond-filter-inp {
+      background: var(--surface2); border: 1px solid var(--border2); color: var(--text);
+      padding: 5px 10px; border-radius: 5px; font-size: 12px; font-family: inherit; outline: none;
+    }
+    .bond-filter-inp:focus { border-color: var(--accent); }
+    .bond-filter-inp option { background: var(--surface2); }
+    .bond-data-note { font-size: 10px; color: var(--text3); margin-left: auto; font-style: italic; }
+    .bond-tbl-wrap  { overflow-x: auto; }
+    .bond-tbl { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+    .bond-tbl th {
+      background: var(--surface2); color: var(--text3); font-size: 9px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .05em; padding: 6px 10px; text-align: right;
+      border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; position: sticky; top: 0;
+    }
+    .bond-tbl th:hover { color: var(--text); }
+    .bond-tbl th.sorted { color: var(--accent); }
+    .bond-tbl th:first-child, .bond-tbl th:nth-child(2) { text-align: left; }
+    .bond-tbl td {
+      padding: 5px 10px; border-bottom: 1px solid var(--border); color: var(--text2);
+      text-align: right; font-variant-numeric: tabular-nums;
+    }
+    .bond-tbl td:first-child, .bond-tbl td:nth-child(2) { text-align: left; }
+    .bond-tbl tr:hover td { background: var(--surface2); }
+    /* Price % of par color tiers */
+    .bond-par-hi   { color: #f59e0b; }                       /* > 110: expensive */
+    .bond-par-mid  { color: #22c55e; }                       /* 98–110: healthy */
+    .bond-par-low  { color: #fb923c; }                       /* 90–98: mild discount */
+    .bond-par-dist { color: #ef4444; font-weight: 700; }     /* < 90: distressed */
+    /* Issuer health pill */
+    .health-pill {
+      display: inline-block; font-size: 9px; font-weight: 700; padding: 2px 7px;
+      border-radius: 10px; text-transform: uppercase; letter-spacing: .04em;
+    }
+    .health-good   { background: rgba(34,197,94,.15);  color: #22c55e; }
+    .health-ok     { background: rgba(245,158,11,.12); color: #f59e0b; }
+    .health-stress { background: rgba(239,68,68,.14);  color: #ef4444; }
+    .bond-issuer-link { color: var(--accent); cursor: pointer; font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+    .bond-issuer-link:hover { text-decoration: underline; }
+    .bond-maya-link { color: var(--accent); text-decoration: none; font-size: 10px; }
+    .bond-maya-link:hover { text-decoration: underline; }
     .metric-strip {
       grid-column: 1 / -1;
       display: grid;
@@ -819,6 +878,7 @@
   <button class="top-tab" data-view="quality" onclick="openFocusView('quality')">Quality</button>
   <button class="top-tab" data-view="breadth" onclick="openFocusView('breadth')">Breadth</button>
   <button class="top-tab" data-view="favorites" onclick="openFavoritesView()" id="tab-favorites">★ Favorites</button>
+  <button class="top-tab" data-view="bonds" onclick="openFocusView('bonds')" style="color:var(--amber)">אג"ח Bonds</button>
 </nav>
 
 <div id="split-work">
@@ -2202,6 +2262,15 @@ function renderFocusContent(kind) {
     return;
   }
 
+  if (kind === 'bonds') {
+    focus.innerHTML = focusShell('אג"ח Bond Hub',
+      'All TASE-listed corporate bonds (סדרות אג"ח) with issuer health metrics',
+      `<div id="bond-hub-content"><div style="padding:20px;color:var(--text3);font-size:13px">Loading bond data…</div></div>`
+    );
+    _loadBondHub();
+    return;
+  }
+
   if (kind === 'scatter') {
     const points = rows.filter(s => s.ev_ebitda > 0 && s.ev_ebitda < 45 && s.roe != null && s.roe > -20 && s.roe < 60);
     const dots = points.map(s => {
@@ -2394,6 +2463,216 @@ function setIdxChartType(btn) {
   btn.closest('.idx-chart-toolbar').querySelectorAll('[data-type]').forEach(b => b.classList.toggle('active', b === btn));
   _initIdxChart();      // recreate chart with new series type
   _loadIdxChartData();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Bond Hub (אג"ח) — TASE corporate bonds
+// ═══════════════════════════════════════════════════════════════════════
+let _bondData = [];
+let _bondSort = { col: 'market_value', asc: false };
+let _bondFilter = { text: '', sector: '', price: '' };
+
+async function _loadBondHub() {
+  try {
+    const d = await fetch('/api/bonds').then(r => r.json());
+    _bondData = d.bonds || [];
+    if (d.error && !_bondData.length) {
+      document.getElementById('bond-hub-content').innerHTML =
+        `<div style="padding:20px;color:var(--text3)">${d.error}</div>`;
+      return;
+    }
+    _renderBondHub();
+  } catch(e) {
+    document.getElementById('bond-hub-content').innerHTML =
+      `<div style="padding:20px;color:var(--red);font-size:12px">Error loading bond data: ${e.message}</div>`;
+  }
+}
+
+function _bondParClass(pct) {
+  if (pct == null) return '';
+  if (pct > 110) return 'bond-par-hi';
+  if (pct >= 98) return 'bond-par-mid';
+  if (pct >= 90) return 'bond-par-low';
+  return 'bond-par-dist';
+}
+
+function _issuerHealth(b) {
+  // Simple heuristic: D/E and operating margin
+  const de = b.debt_equity, om = b.op_margin;
+  if (de == null && om == null) return { cls: '', lbl: '—' };
+  let score = 0;
+  if (de != null) score += de > 4 ? -2 : de > 2 ? -1 : 1;
+  if (om != null) score += om < 0 ? -2 : om < 5 ? -1 : om > 15 ? 2 : 1;
+  if (score >= 2)  return { cls: 'health-good',   lbl: 'Healthy' };
+  if (score >= 0)  return { cls: 'health-ok',     lbl: 'Adequate' };
+  return           { cls: 'health-stress', lbl: 'Stressed' };
+}
+
+function _fmtPar(pct) {
+  if (pct == null) return NA;
+  const sign = pct > 0 ? '+' : '';
+  const cls  = pct > 5 ? 'bond-par-hi' : pct >= -2 ? 'bond-par-mid' : pct >= -10 ? 'bond-par-low' : 'bond-par-dist';
+  return `<span class="${cls}">${sign}${pct.toFixed(2)}%</span>`;
+}
+
+function _filteredBonds() {
+  let b = _bondData;
+  const txt = _bondFilter.text.toLowerCase().trim();
+  if (txt) b = b.filter(x =>
+    x.symbol.toLowerCase().includes(txt) ||
+    x.issuer.toLowerCase().includes(txt) ||
+    (x.issuer_name || '').toLowerCase().includes(txt));
+  if (_bondFilter.sector)
+    b = b.filter(x => (x.sector || '').toLowerCase().includes(_bondFilter.sector.toLowerCase()));
+  if (_bondFilter.price === 'premium')   b = b.filter(x => (x.price_pct || 0) > 102);
+  if (_bondFilter.price === 'par')       b = b.filter(x => { const p = x.price_pct||0; return p >= 98 && p <= 102; });
+  if (_bondFilter.price === 'discount')  b = b.filter(x => { const p = x.price_pct||0; return p >= 90 && p < 98; });
+  if (_bondFilter.price === 'distressed')b = b.filter(x => (x.price_pct || 0) < 90);
+
+  // Sort
+  const { col, asc } = _bondSort;
+  b = [...b].sort((a, z) => {
+    const av = a[col] ?? (asc ? Infinity : -Infinity);
+    const zv = z[col] ?? (asc ? Infinity : -Infinity);
+    return asc ? (av > zv ? 1 : -1) : (av < zv ? 1 : -1);
+  });
+  return b;
+}
+
+function _setBondSort(col) {
+  if (_bondSort.col === col) _bondSort.asc = !_bondSort.asc;
+  else { _bondSort.col = col; _bondSort.asc = false; }
+  _renderBondTable();
+}
+
+function _renderBondTable() {
+  const bonds = _filteredBonds();
+  const { col, asc } = _bondSort;
+  const thCls = c => c === col ? ' sorted' : '';
+  const arr   = c => c === col ? (asc ? ' ▲' : ' ▼') : '';
+
+  const fmtV = n => n == null ? NA : n >= 1e9 ? '₪'+(n/1e9).toFixed(2)+'B' : n >= 1e6 ? '₪'+(n/1e6).toFixed(0)+'M' : '₪'+n.toLocaleString();
+  const fmtPctTbl = (n, d=1) => {
+    if (n == null) return NA;
+    const s = n > 0 ? '+' : '';
+    const cls = n > 0 ? 'pos-text' : n < 0 ? 'neg-text' : '';
+    return `<span class="${cls}">${s}${n.toFixed(d)}%</span>`;
+  };
+
+  const rows = bonds.map(b => {
+    const h     = _issuerHealth(b);
+    const parCls = _bondParClass(b.price_pct);
+    const vol   = b.volume != null ? (b.volume >= 1e6 ? (b.volume/1e6).toFixed(2)+'M' : b.volume >= 1e3 ? (b.volume/1e3).toFixed(0)+'K' : b.volume) : '—';
+    const range52 = (b.low52_pct != null && b.high52_pct != null)
+      ? `${b.low52_pct.toFixed(1)} – ${b.high52_pct.toFixed(1)}`
+      : '—';
+    return `<tr>
+      <td><span class="bond-issuer-link" onclick="gotoStock('${b.issuer}')">${b.issuer}</span></td>
+      <td style="color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis">${b.issuer_name||''}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--text2)">${b.series}</td>
+      <td><span class="${parCls}" style="font-family:'JetBrains Mono',monospace;font-weight:700">${b.price_pct != null ? b.price_pct.toFixed(2) : '—'}</span></td>
+      <td>${_fmtPar(b.vs_par)}</td>
+      <td>${fmtPctTbl(b.change_pct)}</td>
+      <td style="color:var(--text3)">${vol}</td>
+      <td>${fmtV(b.market_value)}</td>
+      <td style="font-size:10px;color:var(--text3)">${range52}</td>
+      <td>${b.debt_equity != null ? b.debt_equity.toFixed(2) : NA}</td>
+      <td>${b.current_ratio != null ? b.current_ratio.toFixed(2) : NA}</td>
+      <td>${fmtPctTbl(b.roe, 1)}</td>
+      <td>${fmtPctTbl(b.op_margin, 1)}</td>
+      <td>${fmtPctTbl(b.revenue_growth, 1)}</td>
+      <td>${b.ev_ebitda != null ? b.ev_ebitda.toFixed(1)+'x' : NA}</td>
+      <td><span class="health-pill ${h.cls}">${h.lbl}</span></td>
+      <td style="color:var(--text2);font-size:10px">${b.sector||'—'}</td>
+      <td><a class="bond-maya-link" href="${b.maya_url}" target="_blank" rel="noopener">Maya ↗</a></td>
+    </tr>`;
+  }).join('');
+
+  const thead = `<thead><tr>
+    <th class="${thCls('issuer')}" onclick="_setBondSort('issuer')">Issuer${arr('issuer')}</th>
+    <th class="${thCls('issuer_name')}" onclick="_setBondSort('issuer_name')" style="text-align:left">Company${arr('issuer_name')}</th>
+    <th class="${thCls('series_num')}" onclick="_setBondSort('series_num')">Series${arr('series_num')}</th>
+    <th class="${thCls('price_pct')}" onclick="_setBondSort('price_pct')">Price (% par)${arr('price_pct')}</th>
+    <th class="${thCls('vs_par')}" onclick="_setBondSort('vs_par')">Vs Par${arr('vs_par')}</th>
+    <th class="${thCls('change_pct')}" onclick="_setBondSort('change_pct')">1D Chg${arr('change_pct')}</th>
+    <th class="${thCls('volume')}" onclick="_setBondSort('volume')">Volume${arr('volume')}</th>
+    <th class="${thCls('market_value')}" onclick="_setBondSort('market_value')">Outstanding${arr('market_value')}</th>
+    <th>52W Range (% par)</th>
+    <th class="${thCls('debt_equity')}" onclick="_setBondSort('debt_equity')">D/E${arr('debt_equity')}</th>
+    <th class="${thCls('current_ratio')}" onclick="_setBondSort('current_ratio')">Curr Ratio${arr('current_ratio')}</th>
+    <th class="${thCls('roe')}" onclick="_setBondSort('roe')">ROE${arr('roe')}</th>
+    <th class="${thCls('op_margin')}" onclick="_setBondSort('op_margin')">Op Margin${arr('op_margin')}</th>
+    <th class="${thCls('revenue_growth')}" onclick="_setBondSort('revenue_growth')">Rev Gr${arr('revenue_growth')}</th>
+    <th class="${thCls('ev_ebitda')}" onclick="_setBondSort('ev_ebitda')">EV/EBITDA${arr('ev_ebitda')}</th>
+    <th>Issuer Health</th>
+    <th class="${thCls('sector')}" onclick="_setBondSort('sector')">Sector${arr('sector')}</th>
+    <th>Filings</th>
+  </tr></thead>`;
+
+  document.getElementById('bond-tbody-wrap').innerHTML =
+    `<div class="bond-tbl-wrap"><table class="bond-tbl">${thead}<tbody>${rows||'<tr><td colspan="18" style="padding:20px;color:var(--text3);text-align:center">No bonds match the filter</td></tr>'}</tbody></table></div>`;
+}
+
+function _renderBondHub() {
+  const all = _bondData;
+  // Summary stats
+  const totalVal = all.reduce((a,b) => a + (b.market_value || 0), 0);
+  const advancing = all.filter(b => (b.change_pct || 0) > 0).length;
+  const declining = all.filter(b => (b.change_pct || 0) < 0).length;
+  const avgPct    = all.filter(b => b.price_pct).reduce((a,b,_,arr) => a + b.price_pct/arr.length, 0);
+  const distressed= all.filter(b => (b.price_pct || 100) < 90).length;
+
+  // Unique sectors for filter dropdown
+  const sectors = [...new Set(all.map(b => b.sector).filter(Boolean))].sort();
+
+  const el = document.getElementById('bond-hub-content');
+  el.innerHTML = `
+    <!-- Education note -->
+    <div class="bond-edu">
+      <strong>Israeli Corporate Bonds (אגרות חוב סדרתיות)</strong> — Israel has one of the world's most active
+      corporate bond markets relative to GDP. Most TASE-listed companies issue bonds (called "series" / סדרה)
+      traded alongside their equity. Prices shown as <strong>% of face value (par = 100)</strong>.
+      Many Israeli bonds are <strong>CPI-linked (צמודות מדד)</strong>. Ratings by
+      <strong>Maalot (מעלות)</strong> / S&amp;P or <strong>Midroog (מדרוג)</strong> / Moody's.
+      <span style="color:var(--text3)">YTM · Duration · Rating · CPI-linkage require TASE API or Bloomberg access.</span>
+    </div>
+
+    <!-- Summary strip -->
+    <div class="bond-summary-strip">
+      <div class="bss-cell"><div class="bss-lbl">Total Bonds</div><div class="bss-val">${all.length}</div></div>
+      <div class="bss-cell"><div class="bss-lbl">Total Outstanding</div><div class="bss-val">${totalVal>=1e9?'₪'+(totalVal/1e9).toFixed(1)+'B':'₪'+(totalVal/1e6).toFixed(0)+'M'}</div></div>
+      <div class="bss-cell"><div class="bss-lbl">Avg Price</div><div class="bss-val">${avgPct.toFixed(2)}</div></div>
+      <div class="bss-cell"><div class="bss-lbl">Advancing / Declining</div>
+        <div class="bss-val"><span style="color:var(--green)">${advancing}</span> / <span style="color:var(--red)">${declining}</span></div></div>
+      <div class="bss-cell"><div class="bss-lbl">Distressed (&lt;90)</div>
+        <div class="bss-val" style="color:${distressed>0?'var(--red)':'var(--green)'}">${distressed}</div></div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bond-filters">
+      <input class="bond-filter-inp" type="text" placeholder="Filter issuer / ticker…" style="width:200px"
+             oninput="_bondFilter.text=this.value;_renderBondTable()">
+      <select class="bond-filter-inp" onchange="_bondFilter.price=this.value;_renderBondTable()">
+        <option value="">All prices</option>
+        <option value="premium">Premium (&gt;102)</option>
+        <option value="par">Near Par (98–102)</option>
+        <option value="discount">Discount (90–98)</option>
+        <option value="distressed">Distressed (&lt;90)</option>
+      </select>
+      <select class="bond-filter-inp" onchange="_bondFilter.sector=this.value;_renderBondTable()">
+        <option value="">All sectors</option>
+        ${sectors.map(s=>`<option value="${s}">${s}</option>`).join('')}
+      </select>
+      <span class="bond-data-note">
+        💡 YTM · Duration · Coupon · Rating → requires TASE API / Bloomberg / Maya filings
+      </span>
+    </div>
+
+    <!-- Table container -->
+    <div id="bond-tbody-wrap"></div>
+  `;
+
+  _renderBondTable();
 }
 
 // ═══════════════════════════════════════════════════════════════════════
