@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DCF Valuation — TASE Screener</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:#08080c; --surface:#0e0e14; --surface2:#141419; --surface3:#1a1a22;
+      --border:#1c1c26; --border2:#242430;
+      --text:#e8e8ea; --text2:#9090a0; --text3:#50505f;
+      --accent:#0066cc; --accent-dim:#001830;
+      --green:#22c55e; --green-dim:#052e16;
+      --red:#ef4444; --red-dim:#2d0e0e;
+      --amber:#f59e0b; --amber-dim:#2d1f05;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;letter-spacing:0!important}
+    body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;min-height:100vh}
+    .hidden{display:none!important}
+
+    /* ── Nav ── */
+    #nav{height:44px;background:var(--surface);border-bottom:1px solid var(--border);
+         display:flex;align-items:center;gap:14px;padding:0 20px}
+    .back-btn{background:transparent;border:1px solid var(--border2);color:var(--text2);
+              padding:5px 12px;border-radius:5px;font-size:11px;font-weight:600;
+              cursor:pointer;font-family:inherit;text-decoration:none;transition:all .12s}
+    .back-btn:hover{background:var(--surface2);color:var(--text)}
+    .nav-title{font-size:14px;font-weight:700;color:var(--text)}
+    .nav-sub{font-size:11px;color:var(--text3)}
+    .spacer{flex:1}
+
+    /* ── Layout ── */
+    .app{display:grid;grid-template-columns:360px 1fr;height:calc(100vh - 44px);overflow:hidden}
+    .left-panel{background:var(--surface);border-right:1px solid var(--border);
+                overflow-y:auto;display:flex;flex-direction:column}
+    .right-panel{overflow-y:auto;padding:20px 24px;background:var(--bg)}
+
+    /* ── Stock selector ── */
+    .selector-zone{padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+    .selector-label{font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;
+                    letter-spacing:.1em!important;margin-bottom:6px}
+    .stock-search-wrap{position:relative}
+    #stock-input{width:100%;background:var(--surface2);border:1px solid var(--border2);
+                 color:var(--text);padding:8px 10px;border-radius:5px;font-family:inherit;
+                 font-size:13px;font-weight:600;outline:none;transition:border .1s}
+    #stock-input:focus{border-color:var(--accent)}
+    #stock-dropdown{position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:50;
+                    background:var(--surface2);border:1px solid var(--border2);
+                    border-radius:5px;max-height:220px;overflow-y:auto;display:none}
+    .stock-opt{padding:7px 10px;cursor:pointer;display:flex;align-items:center;gap:10px;
+               font-size:12px;border-bottom:1px solid var(--border)}
+    .stock-opt:last-child{border-bottom:none}
+    .stock-opt:hover{background:var(--accent-dim)}
+    .stock-opt-tk{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);width:48px;flex-shrink:0}
+    .stock-opt-nm{color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .stock-opt-mc{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);margin-left:auto;flex-shrink:0}
+
+    /* Quick stats strip */
+    .quick-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+                 background:var(--border2);border-top:1px solid var(--border2)}
+    .qs-cell{background:var(--surface);padding:6px 10px}
+    .qs-lbl{font-size:8.5px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:2px}
+    .qs-val{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--text)}
+
+    /* ── Assumption panels ── */
+    .assume-scroll{flex:1;overflow-y:auto;padding:0 0 20px}
+    .assume-sec{border-bottom:1px solid var(--border)}
+    .assume-hd{padding:8px 16px 6px;font-size:9px;font-weight:800;color:var(--text3);
+               text-transform:uppercase;letter-spacing:.1em!important;
+               background:rgba(0,0,0,.25);cursor:pointer;display:flex;justify-content:space-between;
+               align-items:center;user-select:none}
+    .assume-hd:hover{color:var(--text2)}
+    .assume-body{padding:6px 16px 10px}
+    .assume-body.collapsed{display:none}
+    .caret{font-size:10px;transition:transform .15s}
+    .caret.open{transform:rotate(90deg)}
+
+    .field-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;
+               margin-bottom:6px}
+    .field-lbl{font-size:11px;color:var(--text2);font-weight:500}
+    .field-hint{font-size:9.5px;color:var(--text3);margin-top:1px}
+    .field-inp{background:var(--surface2);border:1px solid var(--border2);color:var(--text);
+               padding:4px 8px;border-radius:4px;font-family:'JetBrains Mono',monospace;
+               font-size:12px;font-weight:600;width:80px;text-align:right;outline:none}
+    .field-inp:focus{border-color:var(--accent)}
+    .field-inp.wide{width:100px}
+    .field-unit{font-size:10px;color:var(--text3);position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none}
+    .field-inp-wrap{position:relative}
+    input[type=range]{-webkit-appearance:none;width:100%;height:3px;border-radius:2px;
+                      background:var(--border2);outline:none;margin:4px 0}
+    input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;
+      border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid var(--bg)}
+    .slider-row{display:grid;grid-template-columns:1fr 64px;align-items:center;gap:8px;margin-bottom:8px}
+    .slider-lbl-row{display:flex;justify-content:space-between;font-size:9.5px;color:var(--text3);margin-bottom:2px}
+
+    /* Toggle checkboxes */
+    .toggle-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;cursor:pointer}
+    .toggle-box{width:14px;height:14px;border:1.5px solid var(--border2);border-radius:3px;
+                flex-shrink:0;display:flex;align-items:center;justify-content:center;
+                background:var(--surface2);transition:all .1s;cursor:pointer}
+    .toggle-box.checked{background:var(--accent);border-color:var(--accent)}
+    .toggle-box.checked::after{content:'✓';font-size:9px;color:#fff;font-weight:700}
+    .toggle-lbl{font-size:11px;color:var(--text2);line-height:1.3}
+    .toggle-sub{font-size:9.5px;color:var(--text3)}
+
+    /* Phase rows */
+    .phase-grid{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:6px;margin-bottom:8px}
+    .phase-tag{font-size:9px;font-weight:700;color:var(--text3);background:var(--surface3);
+               border-radius:3px;padding:2px 6px;text-transform:uppercase;white-space:nowrap}
+
+    /* ── Right panel ── */
+    .result-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
+                  height:300px;color:var(--text3);font-size:13px;gap:8px}
+
+    /* Valuation output */
+    .val-header{display:flex;align-items:flex-start;justify-content:space-between;
+                flex-wrap:wrap;gap:16px;margin-bottom:16px;padding-bottom:16px;
+                border-bottom:1px solid var(--border)}
+    .val-main{display:flex;flex-direction:column;gap:4px}
+    .val-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em!important}
+    .val-price{font-family:'JetBrains Mono',monospace;font-size:42px;font-weight:800;line-height:1}
+    .val-upside{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;margin-top:4px}
+    .val-pos{color:var(--green)} .val-neg{color:var(--red)} .val-zero{color:var(--amber)}
+    .val-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .val-card{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:8px 12px}
+    .val-card-lbl{font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:3px}
+    .val-card-val{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:var(--text)}
+
+    /* Waterfall bar */
+    .wf-row{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:11px}
+    .wf-lbl{width:130px;color:var(--text2);flex-shrink:0}
+    .wf-bar-wrap{flex:1;height:6px;background:var(--border2);border-radius:3px;overflow:hidden}
+    .wf-bar{height:100%;border-radius:3px;transition:width .5s}
+    .wf-val{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);width:70px;text-align:right;flex-shrink:0}
+
+    /* Projections table */
+    .proj-wrap{overflow-x:auto;margin-bottom:16px}
+    .proj-tbl{width:100%;border-collapse:collapse;font-size:10.5px;white-space:nowrap}
+    .proj-tbl th{background:var(--surface2);color:var(--text3);font-size:8.5px;font-weight:700;
+                 text-transform:uppercase;padding:5px 8px;text-align:right;border-bottom:1px solid var(--border)}
+    .proj-tbl th:first-child{text-align:left;width:80px}
+    .proj-tbl td{padding:4px 8px;border-bottom:1px solid var(--border);color:var(--text2);
+                 text-align:right;font-variant-numeric:tabular-nums;font-family:'JetBrains Mono',monospace}
+    .proj-tbl td:first-child{text-align:left;color:var(--text);font-family:inherit;font-weight:600}
+    .proj-tbl tr:hover td{background:var(--surface2)}
+    .proj-tbl tr.tv-row td{color:var(--amber);font-weight:600}
+    .proj-tbl tr.sum-row td{color:var(--text);font-weight:700;border-top:1px solid var(--border2)}
+
+    /* Sensitivity matrix */
+    .sens-wrap{overflow-x:auto;margin-bottom:16px}
+    .sens-tbl{border-collapse:collapse;font-size:10px}
+    .sens-tbl th{padding:5px 10px;font-size:8.5px;font-weight:700;color:var(--text3);
+                 text-transform:uppercase;text-align:center;white-space:nowrap;
+                 background:var(--surface2);border:1px solid var(--border)}
+    .sens-tbl td{padding:5px 10px;text-align:center;border:1px solid var(--border);
+                 font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;
+                 cursor:default;white-space:nowrap;transition:filter .1s}
+    .sens-tbl td:first-child{background:var(--surface2);color:var(--text3);font-size:9px;
+                              font-family:inherit;font-weight:700;text-align:right;white-space:nowrap}
+    .sens-tbl tr:first-child td{color:var(--text3);font-family:inherit;font-size:9px;font-weight:700}
+    /* Color scale via inline bg/color set in JS */
+    .sens-current{outline:2px solid var(--accent)!important;outline-offset:-2px;z-index:1;position:relative}
+
+    /* Section headers in right panel */
+    .r-sec-hd{font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;
+              letter-spacing:.1em!important;border-bottom:1px solid var(--border);
+              padding-bottom:4px;margin-bottom:10px;margin-top:18px}
+    .r-sec-hd:first-child{margin-top:0}
+
+    /* Assumption summary badge row */
+    .assume-summary{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+    .assum-badge{font-size:10px;font-weight:600;padding:3px 8px;border-radius:4px;
+                 background:var(--surface2);border:1px solid var(--border2);color:var(--text2)}
+    .assum-badge span{color:var(--text)}
+
+    @media(max-width:900px){
+      .app{grid-template-columns:1fr;height:auto}
+      .left-panel{max-height:60vh}
+    }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<div id="nav">
+  <a href="/" class="back-btn">← Screener</a>
+  <div>
+    <div class="nav-title">DCF Valuation Calculator</div>
+    <div class="nav-sub">Discounted Cash Flow · Hedge-Fund Grade · TASE</div>
+  </div>
+  <div class="spacer"></div>
+  <button onclick="runDCF()" style="background:var(--accent);border:none;color:#fff;padding:7px 18px;
+    border-radius:5px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">
+    ▶ Run DCF
+  </button>
+</div>
+
+<div class="app">
+  <!-- ══════════ LEFT PANEL ══════════ -->
+  <div class="left-panel">
+
+    <!-- Stock selector -->
+    <div class="selector-zone">
+      <div class="selector-label">Select Stock</div>
+      <div class="stock-search-wrap">
+        <input id="stock-input" type="text" placeholder="Search ticker or company…" autocomplete="off"
+               oninput="filterStocks(this.value)" onfocus="showDropdown()" onblur="hideDropdown()">
+        <div id="stock-dropdown"></div>
+      </div>
+    </div>
+
+    <!-- Quick stats strip -->
+    <div class="quick-stats" id="quick-stats" style="display:none">
+      <div class="qs-cell"><div class="qs-lbl">Price</div><div class="qs-val" id="qs-price">—</div></div>
+      <div class="qs-cell"><div class="qs-lbl">Mkt Cap</div><div class="qs-val" id="qs-mktcap">—</div></div>
+      <div class="qs-cell"><div class="qs-lbl">P/E TTM</div><div class="qs-val" id="qs-pe">—</div></div>
+      <div class="qs-cell"><div class="qs-lbl">EV/EBITDA</div><div class="qs-val" id="qs-ev">—</div></div>
+      <div class="qs-cell"><div class="qs-lbl">ROE</div><div class="qs-val" id="qs-roe">—</div></div>
+      <div class="qs-cell"><div class="qs-lbl">Net Margin</div><div class="qs-val" id="qs-nm">—</div></div>
+    </div>
+
+    <!-- Assumptions -->
+    <div class="assume-scroll">
+
+      <!-- GROWTH -->
+      <div class="assume-sec">
+        <div class="assume-hd" onclick="toggleSec(this)">
+          <span>📈 Revenue Growth</span><span class="caret open">▶</span>
+        </div>
+        <div class="assume-body">
+          <div class="slider-lbl-row"><span>Phase 1: Years 1–5</span><span id="g1-lbl" style="font-family:'JetBrains Mono',monospace;color:var(--accent)">15%</span></div>
+          <div class="slider-row">
+            <input type="range" id="g1" min="-20" max="60" step="0.5" value="15" oninput="sliderSync('g1','g1-lbl','g1i',1,'%');calc()">
+            <input type="text" class="field-inp" id="g1i" value="15" onchange="inputSync('g1i','g1','g1-lbl',1,'%');calc()">
+          </div>
+          <div class="slider-lbl-row" style="margin-top:6px"><span>Phase 2: Years 6–10</span><span id="g2-lbl" style="font-family:'JetBrains Mono',monospace;color:var(--accent)">8%</span></div>
+          <div class="slider-row">
+            <input type="range" id="g2" min="-10" max="40" step="0.5" value="8" oninput="sliderSync('g2','g2-lbl','g2i',1,'%');calc()">
+            <input type="text" class="field-inp" id="g2i" value="8" onchange="inputSync('g2i','g2','g2-lbl',1,'%');calc()">
+          </div>
+          <div class="slider-lbl-row" style="margin-top:6px"><span>Terminal Growth Rate</span><span id="tg-lbl" style="font-family:'JetBrains Mono',monospace;color:var(--amber)">2.5%</span></div>
+          <div class="slider-row">
+            <input type="range" id="tg" min="0" max="5" step="0.1" value="2.5" oninput="sliderSync('tg','tg-lbl','tgi',1,'%');calc()">
+            <input type="text" class="field-inp" id="tgi" value="2.5" onchange="inputSync('tgi','tg','tg-lbl',1,'%');calc()">
+          </div>
+        </div>
+      </div>
+
+      <!-- MARGINS -->
+      <div class="assume-sec">
+        <div class="assume-hd" onclick="toggleSec(this)">
+          <span>💹 Margin Assumptions</span><span class="caret open">▶</span>
+        </div>
+        <div class="assume-body">
+          <div class="field-row">
+            <div><div class="field-lbl">Current EBIT Margin</div><div class="field-hint">Base year (auto-filled from TTM)</div></div>
+            <div class="field-inp-wrap"><input class="field-inp wide" id="ebit0" value="20" onchange="calc()"><span class="field-unit">%</span></div>
+          </div>
+          <div class="field-row">
+            <div><div class="field-lbl">Target EBIT Margin (Y10)</div><div class="field-hint">Linear interpolation over 10 years</div></div>
+            <div class="field-inp-wrap"><input class="field-inp wide" id="ebit10" value="25" onchange="calc()"><span class="field-unit">%</span></div>
+          </div>
+          <div class="field-row" style="margin-top:8px">
+            <div><div class="field-lbl">D&amp;A as % of Revenue</div></div>
+            <div class="field-inp-wrap"><input class="field-inp wide" id="da_pct" value="4" onchange="calc()"><span class="field-unit">%</span></div>
+          </div>
+          <div class="field-row">
+            <div><div class="field-lbl">CapEx as % of Revenue</div></div>
+            <div class="field-inp-wrap"><input class="field-inp wide" id="capex_pct" value="5" onchange="calc()"><span class="field-unit">%</span></div>
+          </div>
+          <div class="field-row">
+            <div><div class="field-lbl">ΔWorking Capital as % of ΔRev</div></div>
+            <div class="field-inp-wrap"><input class="field-inp wide" id="nwc_pct" value="3" onchange="calc()"><span class="field-unit">%</span></div>
+          </div>
+          <div class="field-row">
+            <div><div class="field-lbl">Tax Rate</div><div class="field-hint">Israeli corporate tax = 23%</div></div>
+            <div class="field-inp-wrap"><input class="field-inp wide" id="tax" value="23" onchange="calc()"><span class="field-unit">%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DISCOUNT RATE -->
+      <div class="assume-sec">
+        <div class="assume-hd" onclick="toggleSec(this)">
+          <span>📉 Discount Rate (WACC)</span><span class="caret open">▶</span>
+        </div>
+        <div class="assume-body">
+          <div style="display:flex;gap:6px;margin-bottom:10px">
+            <button class="wacc-mode-btn active" id="wacc-auto-btn" onclick="setWaccMode('auto')"
+              style="flex:1;padding:5px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;
+                     font-family:inherit;border:1px solid var(--border2);background:var(--accent);color:#fff">
+              Auto (CAPM)</button>
+            <button class="wacc-mode-btn" id="wacc-man-btn" onclick="setWaccMode('manual')"
+              style="flex:1;padding:5px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;
+                     font-family:inherit;border:1px solid var(--border2);background:var(--surface2);color:var(--text2)">
+              Manual</button>
+          </div>
+          <div id="wacc-auto-fields">
+            <div class="field-row">
+              <div><div class="field-lbl">Risk-Free Rate</div><div class="field-hint">IL 10Y gov bond ≈ 4.38%</div></div>
+              <div class="field-inp-wrap"><input class="field-inp wide" id="rf" value="4.38" onchange="autoWacc();calc()"><span class="field-unit">%</span></div>
+            </div>
+            <div class="field-row">
+              <div><div class="field-lbl">Beta</div><div class="field-hint">Auto-filled from screener</div></div>
+              <div class="field-inp-wrap"><input class="field-inp wide" id="beta_inp" value="1.0" onchange="autoWacc();calc()"></div>
+            </div>
+            <div class="field-row">
+              <div><div class="field-lbl">Equity Risk Premium</div><div class="field-hint">Damodaran Israel 2024 ≈ 5.5%</div></div>
+              <div class="field-inp-wrap"><input class="field-inp wide" id="erp" value="5.5" onchange="autoWacc();calc()"><span class="field-unit">%</span></div>
+            </div>
+            <div class="field-row">
+              <div><div class="field-lbl">Pre-Tax Cost of Debt</div></div>
+              <div class="field-inp-wrap"><input class="field-inp wide" id="kd" value="5.5" onchange="autoWacc();calc()"><span class="field-unit">%</span></div>
+            </div>
+            <div class="field-row">
+              <div><div class="field-lbl">Debt Weight (D/V)</div></div>
+              <div class="field-inp-wrap"><input class="field-inp wide" id="dv" value="30" onchange="autoWacc();calc()"><span class="field-unit">%</span></div>
+            </div>
+            <div style="background:var(--surface2);border-radius:4px;padding:6px 10px;margin-top:4px;display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:11px;color:var(--text2)">Computed WACC</span>
+              <span id="wacc-display" style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:var(--accent)">—</span>
+            </div>
+          </div>
+          <div id="wacc-man-fields" class="hidden">
+            <div class="field-row">
+              <div><div class="field-lbl">WACC (manual override)</div></div>
+              <div class="field-inp-wrap"><input class="field-inp wide" id="wacc_man" value="10" onchange="calc()"><span class="field-unit">%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BASE DATA -->
+      <div class="assume-sec">
+        <div class="assume-hd" onclick="toggleSec(this)">
+          <span>📊 Base Financial Data</span><span class="caret open">▶</span>
+        </div>
+        <div class="assume-body">
+          <div class="field-row">
+            <div><div class="field-lbl">Last Year Revenue</div><div class="field-hint">ILS millions (auto-filled)</div></div>
+            <div class="field-inp-wrap"><input class="field-inp wide" id="rev0" value="1000" onchange="calc()"><span class="field-unit">M</span></div>
+          </div>
+          <div class="field-row">
+            <div><div class="field-lbl">Shares Outstanding</div><div class="field-hint">millions</div></div>
+            <div class="field-inp-wrap"><input class="field-inp wide" id="shares" value="100" onchange="calc()"><span class="field-unit">M</span></div>
+          </div>
+          <div class="field-row">
+            <div><div class="field-lbl">Net Debt (Debt − Cash)</div><div class="field-hint">ILS millions. Negative = net cash</div></div>
+            <div class="field-inp-wrap"><input class="field-inp wide" id="net_debt" value="0" onchange="calc()"><span class="field-unit">M</span></div>
+          </div>
+          <div class="field-row">
+            <div><div class="field-lbl">Current Share Price</div><div class="field-hint">₪ (auto-filled)</div></div>
+            <div class="field-inp-wrap"><input class="field-inp wide" id="curr_price" value="100" onchange="calc()"><span class="field-unit">₪</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TOGGLES -->
+      <div class="assume-sec">
+        <div class="assume-hd" onclick="toggleSec(this)">
+          <span>⚙ Model Toggles</span><span class="caret open">▶</span>
+        </div>
+        <div class="assume-body" style="padding-top:8px">
+          <div id="toggle-list"></div>
+        </div>
+      </div>
+
+    </div><!-- .assume-scroll -->
+  </div><!-- left-panel -->
+
+  <!-- ══════════ RIGHT PANEL ══════════ -->
+  <div class="right-panel" id="right-panel">
+    <div class="result-empty" id="result-empty">
+      <div style="font-size:28px">⟩∫⟨</div>
+      <div>Select a stock and run the DCF model</div>
+      <div style="font-size:11px;color:var(--text3);text-align:center;max-width:280px">
+        Adjust revenue growth, margins, and discount rate in the left panel, then click <strong>▶ Run DCF</strong>
+      </div>
+    </div>
+    <div id="result-content" class="hidden"></div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let allStocks = [];
+let selectedStock = null;
+let waccMode = 'auto';
+
+const TOGGLES = [
+  { id:'tv',   lbl:'Include Terminal Value',      sub:'Gordon Growth model, perpetuity beyond Y10', val:true },
+  { id:'cash', lbl:'Add Cash to Equity Value',    sub:'Cash & short-term investments from balance sheet', val:true },
+  { id:'debt', lbl:'Subtract Net Debt',           sub:'Reduce equity value by (Total Debt − Cash)', val:true },
+  { id:'norm', lbl:'Use Normalized FCF (3Y avg)', sub:'Averages FCF over last 3 years as base', val:false },
+  { id:'size', lbl:'Apply Size/Illiquidity Discount', sub:'−10% for small/mid caps (market microstructure risk)', val:false },
+  { id:'cons', lbl:'Conservative Mode',           sub:'−20% margin of safety applied to intrinsic value', val:false },
+  { id:'dil',  lbl:'Dilution Adjustment',         sub:'−3% for stock-based compensation / option dilution', val:false },
+];
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+(async function boot() {
+  renderToggles();
+  autoWacc();
+  try {
+    const d = await fetch('/api/stocks').then(r => r.json());
+    allStocks = (d.data || []).filter(s => s.ticker && s.name);
+  } catch {}
+})();
+
+// ── Toggles ────────────────────────────────────────────────────────────────
+function renderToggles() {
+  document.getElementById('toggle-list').innerHTML = TOGGLES.map(t => `
+    <div class="toggle-row" onclick="toggleCheck('${t.id}')">
+      <div class="toggle-box${t.val?' checked':''}" id="tbox-${t.id}"></div>
+      <div><div class="toggle-lbl">${t.lbl}</div><div class="toggle-sub">${t.sub}</div></div>
+    </div>`).join('');
+}
+function toggleCheck(id) {
+  const t = TOGGLES.find(x => x.id === id);
+  if (!t) return;
+  t.val = !t.val;
+  const box = document.getElementById('tbox-' + id);
+  if (box) box.className = 'toggle-box' + (t.val ? ' checked' : '');
+  calc();
+}
+const getToggle = id => TOGGLES.find(t => t.id === id)?.val ?? false;
+
+// ── Accordion ──────────────────────────────────────────────────────────────
+function toggleSec(hd) {
+  const body = hd.nextElementSibling;
+  const caret = hd.querySelector('.caret');
+  body.classList.toggle('collapsed');
+  caret.classList.toggle('open', !body.classList.contains('collapsed'));
+}
+
+// ── Slider / input sync ────────────────────────────────────────────────────
+function sliderSync(sliderId, lblId, inputId, dec, unit) {
+  const v = parseFloat(document.getElementById(sliderId).value);
+  document.getElementById(lblId).textContent = v.toFixed(dec) + unit;
+  document.getElementById(inputId).value = v.toFixed(dec);
+}
+function inputSync(inputId, sliderId, lblId, dec, unit) {
+  const v = parseFloat(document.getElementById(inputId).value) || 0;
+  document.getElementById(sliderId).value = v;
+  document.getElementById(lblId).textContent = v.toFixed(dec) + unit;
+}
+
+// ── WACC auto ─────────────────────────────────────────────────────────────
+function setWaccMode(mode) {
+  waccMode = mode;
+  document.getElementById('wacc-auto-btn').style.background = mode==='auto' ? 'var(--accent)' : 'var(--surface2)';
+  document.getElementById('wacc-auto-btn').style.color = mode==='auto' ? '#fff' : 'var(--text2)';
+  document.getElementById('wacc-man-btn').style.background = mode==='manual' ? 'var(--accent)' : 'var(--surface2)';
+  document.getElementById('wacc-man-btn').style.color = mode==='manual' ? '#fff' : 'var(--text2)';
+  document.getElementById('wacc-auto-fields').classList.toggle('hidden', mode==='manual');
+  document.getElementById('wacc-man-fields').classList.toggle('hidden', mode==='auto');
+  calc();
+}
+
+function autoWacc() {
+  const rf   = parseFloat(document.getElementById('rf').value) / 100 || 0.0438;
+  const beta = parseFloat(document.getElementById('beta_inp').value) || 1.0;
+  const erp  = parseFloat(document.getElementById('erp').value)  / 100 || 0.055;
+  const kd   = parseFloat(document.getElementById('kd').value)   / 100 || 0.055;
+  const dv   = parseFloat(document.getElementById('dv').value)   / 100 || 0.30;
+  const tax  = parseFloat(document.getElementById('tax').value)  / 100 || 0.23;
+  const ke   = rf + beta * erp;
+  const ev_val = 1 - dv;
+  const wacc = ev_val * ke + dv * kd * (1 - tax);
+  document.getElementById('wacc-display').textContent = (wacc * 100).toFixed(2) + '%';
+  return wacc;
+}
+
+function getWacc() {
+  if (waccMode === 'manual') {
+    return parseFloat(document.getElementById('wacc_man').value) / 100 || 0.10;
+  }
+  return autoWacc();
+}
+
+// ── Stock selector ─────────────────────────────────────────────────────────
+function filterStocks(q) {
+  const dd = document.getElementById('stock-dropdown');
+  q = (q || '').toLowerCase().trim();
+  const matches = q.length < 1
+    ? allStocks.slice(0, 30)
+    : allStocks.filter(s =>
+        s.ticker.toLowerCase().includes(q) || (s.name||'').toLowerCase().includes(q)
+      ).slice(0, 30);
+  dd.innerHTML = matches.map(s => {
+    const mc = s.market_cap >= 1e9 ? `₪${(s.market_cap/1e9).toFixed(1)}B` : s.market_cap >= 1e6 ? `₪${(s.market_cap/1e6).toFixed(0)}M` : '';
+    return `<div class="stock-opt" onmousedown="selectStock('${s.ticker}')">
+      <span class="stock-opt-tk">${s.ticker}</span>
+      <span class="stock-opt-nm">${s.name||''}</span>
+      <span class="stock-opt-mc">${mc}</span>
+    </div>`;
+  }).join('');
+  dd.style.display = matches.length ? 'block' : 'none';
+}
+
+function showDropdown() {
+  filterStocks(document.getElementById('stock-input').value);
+}
+function hideDropdown() {
+  setTimeout(() => { document.getElementById('stock-dropdown').style.display = 'none'; }, 150);
+}
+
+async function selectStock(ticker) {
+  document.getElementById('stock-input').value = ticker;
+  document.getElementById('stock-dropdown').style.display = 'none';
+
+  const s = allStocks.find(x => x.ticker === ticker);
+  if (!s) return;
+  selectedStock = s;
+
+  // Quick stats
+  const fmtL = n => n == null ? '—' : n >= 1e9 ? `₪${(n/1e9).toFixed(1)}B` : n >= 1e6 ? `₪${(n/1e6).toFixed(0)}M` : '₪'+n;
+  document.getElementById('qs-price').textContent  = s.price != null ? `₪${s.price.toFixed(2)}` : '—';
+  document.getElementById('qs-mktcap').textContent = fmtL(s.market_cap);
+  document.getElementById('qs-pe').textContent     = s.pe != null ? `${s.pe.toFixed(1)}x` : '—';
+  document.getElementById('qs-ev').textContent     = s.ev_ebitda != null ? `${s.ev_ebitda.toFixed(1)}x` : '—';
+  document.getElementById('qs-roe').textContent    = s.roe != null ? `${s.roe.toFixed(1)}%` : '—';
+  document.getElementById('qs-nm').textContent     = s.net_margin != null ? `${s.net_margin.toFixed(1)}%` : '—';
+  document.getElementById('quick-stats').style.display = 'grid';
+
+  // Auto-fill assumptions from screener data
+  if (s.price != null)       document.getElementById('curr_price').value = s.price.toFixed(2);
+  if (s.beta != null)        document.getElementById('beta_inp').value   = s.beta.toFixed(2);
+  if (s.op_margin != null)   document.getElementById('ebit0').value      = s.op_margin.toFixed(1);
+  if (s.op_margin != null)   document.getElementById('ebit10').value     = Math.min(s.op_margin * 1.2, 50).toFixed(1);
+  if (s.revenue_growth != null) {
+    const g = Math.max(-20, Math.min(60, s.revenue_growth));
+    document.getElementById('g1').value = g;
+    document.getElementById('g1i').value = g.toFixed(1);
+    document.getElementById('g1-lbl').textContent = g.toFixed(1) + '%';
+  }
+
+  // Try to load detail for richer data
+  try {
+    const det = await fetch(`/api/detail/${ticker}`).then(r => r.json());
+    // Revenue from income statement
+    const revVals = det?.income?.revenue || [];
+    const lastRev = [...revVals].reverse().find(v => v != null);
+    if (lastRev) document.getElementById('rev0').value = (lastRev / 1e6).toFixed(0);
+
+    // Shares
+    if (det?.balance) {/* would need shares from info */}
+
+    // Approximate net debt
+    const debt = (det?.balance?.total_debt || []).slice(-1)[0] || 0;
+    const cash = (det?.balance?.cash || []).slice(-1)[0] || 0;
+    if (debt || cash) document.getElementById('net_debt').value = ((debt - cash) / 1e6).toFixed(0);
+  } catch {}
+
+  autoWacc();
+  calc();
+}
+
+// ── DCF Engine ─────────────────────────────────────────────────────────────
+function dcfEngine(params) {
+  const { rev0, g1, g2, ebit0, ebit10, da, capex, nwc, tax, wacc, tg, shares, netDebt, useTV, addCash, subDebt, applySize, cons, dil, norm } = params;
+
+  const N = 10;
+  const rows = [];
+  let rev = rev0;
+
+  for (let yr = 1; yr <= N; yr++) {
+    const gRate = yr <= 5 ? g1 : g2;
+    const prevRev = rev;
+    rev = rev * (1 + gRate);
+    const t = (yr - 1) / (N - 1);
+    const ebitMgn = ebit0 + (ebit10 - ebit0) * t;
+    const ebit  = rev * ebitMgn;
+    const nopat = ebit * (1 - tax);
+    const daVal = rev * da;
+    const capexVal = rev * capex;
+    const dNwc  = (rev - prevRev) * nwc;
+    const fcf   = nopat + daVal - capexVal - dNwc;
+    const df    = Math.pow(1 + wacc, -yr);
+    const pvFcf = fcf * df;
+    rows.push({ yr, rev, gRate, ebitMgn, ebit, nopat, daVal, capexVal, dNwc, fcf, df, pvFcf });
+  }
+
+  const sumPvFcf = rows.reduce((a, r) => a + r.pvFcf, 0);
+  const fcfN = rows[N - 1].fcf;
+  const tvRaw = useTV ? fcfN * (1 + tg) / (wacc - tg) : 0;
+  const pvTv  = useTV ? tvRaw * rows[N - 1].df : 0;
+
+  let ev = sumPvFcf + pvTv;
+  let equityVal = ev;
+  if (subDebt) equityVal -= netDebt;
+
+  let discount = 1;
+  if (applySize) discount *= 0.90;
+  if (cons)      discount *= 0.80;
+  if (dil)       discount *= 0.97;
+  equityVal *= discount;
+
+  const intrinsic = shares > 0 ? equityVal / shares : 0;
+
+  return { rows, sumPvFcf, tvRaw, pvTv, ev, equityVal, intrinsic };
+}
+
+function getParams() {
+  const pf = id => parseFloat(document.getElementById(id).value) || 0;
+  return {
+    rev0:    pf('rev0') * 1e6,
+    g1:      pf('g1') / 100,
+    g2:      pf('g2') / 100,
+    ebit0:   pf('ebit0') / 100,
+    ebit10:  pf('ebit10') / 100,
+    da:      pf('da_pct') / 100,
+    capex:   pf('capex_pct') / 100,
+    nwc:     pf('nwc_pct') / 100,
+    tax:     pf('tax') / 100,
+    wacc:    getWacc(),
+    tg:      pf('tg') / 100,
+    shares:  pf('shares') * 1e6,
+    netDebt: pf('net_debt') * 1e6,
+    currPrice: pf('curr_price'),
+    useTV:   getToggle('tv'),
+    addCash: getToggle('cash'),
+    subDebt: getToggle('debt'),
+    norm:    getToggle('norm'),
+    applySize: getToggle('size'),
+    cons:    getToggle('cons'),
+    dil:     getToggle('dil'),
+  };
+}
+
+function calc() {
+  const p = getParams();
+  if (p.rev0 <= 0 || p.shares <= 0) return;
+  if (p.wacc <= p.tg) return; // invalid
+
+  const res = dcfEngine(p);
+  renderResult(res, p);
+}
+
+function runDCF() {
+  const p = getParams();
+  if (!selectedStock && p.rev0 <= 0) { alert('Select a stock first or enter base data.'); return; }
+  calc();
+  document.getElementById('result-content').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ── Render output ──────────────────────────────────────────────────────────
+const fmtM = n => { const a = Math.abs(n); const sg = n < 0 ? '−' : ''; if (a >= 1e9) return sg + '₪' + (a/1e9).toFixed(2)+'B'; if (a >= 1e6) return sg + '₪' + (a/1e6).toFixed(1)+'M'; return sg + '₪' + a.toFixed(0); };
+const fmtPct = (n, d=1) => { const s = n >= 0 ? '+' : ''; return s + n.toFixed(d) + '%'; };
+const pctCls = n => n > 5 ? 'val-pos' : n < -5 ? 'val-neg' : 'val-zero';
+
+function renderResult(res, p) {
+  const { rows, sumPvFcf, tvRaw, pvTv, ev, equityVal, intrinsic } = res;
+  const currPrice = p.currPrice;
+  const upside = currPrice > 0 ? (intrinsic - currPrice) / currPrice * 100 : 0;
+  const upCls = pctCls(upside);
+
+  // Summary badges
+  const badges = [
+    `WACC <span>${(p.wacc*100).toFixed(2)}%</span>`,
+    `Ter. Growth <span>${(p.tg*100).toFixed(1)}%</span>`,
+    `G1 (Y1-5) <span>${(p.g1*100).toFixed(1)}%</span>`,
+    `G2 (Y6-10) <span>${(p.g2*100).toFixed(1)}%</span>`,
+    `EBIT₀ <span>${(p.ebit0*100).toFixed(1)}%</span>`,
+    `EBIT₁₀ <span>${(p.ebit10*100).toFixed(1)}%</span>`,
+  ].map(s => `<span class="assum-badge">${s}</span>`).join('');
+
+  // Projection table
+  const projRows = rows.map(r => `<tr>
+    <td>Y${r.yr}</td>
+    <td>${fmtM(r.rev)}</td>
+    <td style="color:${r.gRate>=0?'#76ad9a':'#b78f8f'}">${fmtPct(r.gRate*100)}</td>
+    <td>${(r.ebitMgn*100).toFixed(1)}%</td>
+    <td>${fmtM(r.ebit)}</td>
+    <td>${fmtM(r.nopat)}</td>
+    <td>${fmtM(r.daVal)}</td>
+    <td>(${fmtM(r.capexVal).replace('₪','₪(')})</td>
+    <td>(${fmtM(r.dNwc).replace('₪','₪(')})</td>
+    <td style="font-weight:700;color:${r.fcf>=0?'#76ad9a':'#b78f8f'}">${fmtM(r.fcf)}</td>
+    <td style="color:var(--text3)">${r.df.toFixed(4)}</td>
+    <td style="color:var(--accent)">${fmtM(r.pvFcf)}</td>
+  </tr>`).join('');
+
+  // Waterfall
+  const wfTotal = Math.max(Math.abs(sumPvFcf) + Math.abs(pvTv), 1);
+  const wf = [
+    { lbl:'PV of FCFs (Y1-10)', val: sumPvFcf, color:'var(--accent)' },
+    { lbl:'PV of Terminal Value', val: pvTv,     color:'var(--amber)' },
+    { lbl:'Enterprise Value',    val: ev,        color:'var(--text2)', sep:true },
+    { lbl:'Minus Net Debt',      val: -p.netDebt, color: p.netDebt>0?'var(--red)':'var(--green)' },
+    { lbl:'Equity Value',        val: equityVal,  color:'var(--text)', sep:true },
+  ].map(w => `
+    ${w.sep?'<div style="height:1px;background:var(--border);margin:4px 0"></div>':''}
+    <div class="wf-row">
+      <span class="wf-lbl">${w.lbl}</span>
+      <div class="wf-bar-wrap"><div class="wf-bar" style="width:${Math.min(100,Math.abs(w.val)/wfTotal*100).toFixed(1)}%;background:${w.color}"></div></div>
+      <span class="wf-val">${fmtM(w.val)}</span>
+    </div>`).join('');
+
+  // Sensitivity matrix
+  const sensTbl = buildSensitivity(p, currPrice);
+
+  document.getElementById('result-empty').classList.add('hidden');
+  document.getElementById('result-content').classList.remove('hidden');
+  document.getElementById('result-content').innerHTML = `
+    <!-- Header -->
+    <div class="val-header">
+      <div class="val-main">
+        <div class="val-label">Intrinsic Value per Share</div>
+        <div class="val-price">₪${intrinsic > 0 ? intrinsic.toFixed(2) : '—'}</div>
+        <div class="val-upside ${upCls}">${fmtPct(upside)} vs ₪${currPrice.toFixed(2)} market</div>
+      </div>
+      <div class="val-grid">
+        <div class="val-card"><div class="val-card-lbl">Ent. Value</div><div class="val-card-val">${fmtM(ev)}</div></div>
+        <div class="val-card"><div class="val-card-lbl">Equity Value</div><div class="val-card-val">${fmtM(equityVal)}</div></div>
+        <div class="val-card"><div class="val-card-lbl">PV of FCFs</div><div class="val-card-val">${fmtM(sumPvFcf)}</div></div>
+        <div class="val-card"><div class="val-card-lbl">PV Term. Val.</div><div class="val-card-val">${fmtM(pvTv)}</div></div>
+        <div class="val-card"><div class="val-card-lbl">TV % of EV</div><div class="val-card-val">${ev>0?(pvTv/ev*100).toFixed(1)+'%':'—'}</div></div>
+        <div class="val-card"><div class="val-card-lbl">Shares Out.</div><div class="val-card-val">${(p.shares/1e6).toFixed(1)}M</div></div>
+      </div>
+    </div>
+
+    <!-- Assumption badges -->
+    <div class="assume-summary">${badges}</div>
+
+    <!-- Waterfall -->
+    <div class="r-sec-hd">Value Bridge</div>
+    ${wf}
+
+    <!-- Projections -->
+    <div class="r-sec-hd" style="margin-top:20px">10-Year Free Cash Flow Projections</div>
+    <div class="proj-wrap">
+      <table class="proj-tbl">
+        <thead><tr>
+          <th>Year</th><th>Revenue</th><th>Rev Gr</th><th>EBIT%</th>
+          <th>EBIT</th><th>NOPAT</th><th>D&amp;A</th><th>CapEx</th>
+          <th>ΔNWC</th><th>FCF</th><th>Disc. F</th><th>PV FCF</th>
+        </tr></thead>
+        <tbody>
+          ${projRows}
+          ${p.useTV?`<tr class="tv-row">
+            <td>Terminal</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+            <td>—</td><td>—</td><td>—</td>
+            <td>${fmtM(tvRaw)}</td>
+            <td>${rows[9].df.toFixed(4)}</td>
+            <td>${fmtM(pvTv)}</td>
+          </tr>`:''}
+          <tr class="sum-row">
+            <td>Total</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+            <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+            <td style="color:var(--accent)">${fmtM(sumPvFcf + pvTv)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Sensitivity -->
+    <div class="r-sec-hd">Sensitivity: Intrinsic Value (₪) — WACC × Terminal Growth</div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:8px">
+      Highlighted cell = current assumptions. Color:
+      <span style="color:#22c55e">■</span> upside &nbsp;
+      <span style="color:#ef4444">■</span> downside vs market price ₪${currPrice.toFixed(2)}
+    </div>
+    <div class="sens-wrap">${sensTbl}</div>
+  `;
+}
+
+function buildSensitivity(p, currPrice) {
+  // WACC range: p.wacc ± 2% in 0.5% steps → 9 rows
+  const waccBase = p.wacc;
+  const tgBase   = p.tg;
+  const waccRange = [-0.02, -0.015, -0.01, -0.005, 0, 0.005, 0.01, 0.015, 0.02];
+  const tgRange   = [0, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04];
+
+  let html = '<table class="sens-tbl"><thead><tr><th>WACC \\ TG</th>';
+  tgRange.forEach(t => { html += `<th>${(t*100).toFixed(1)}%</th>`; });
+  html += '</tr></thead><tbody>';
+
+  waccRange.forEach(dw => {
+    const wRow = waccBase + dw;
+    if (wRow <= 0) return;
+    html += `<tr><td>${(wRow*100).toFixed(2)}%</td>`;
+    tgRange.forEach(t => {
+      if (wRow <= t) { html += '<td style="color:var(--text3)">N/A</td>'; return; }
+      const rp = { ...p, wacc: wRow, tg: t };
+      const { intrinsic } = dcfEngine(rp);
+      const upside = currPrice > 0 ? (intrinsic - currPrice) / currPrice * 100 : 0;
+      // Color scale
+      let bg, color;
+      if (upside > 30)      { bg='rgba(22,163,74,.55)';  color='#d1fae5'; }
+      else if (upside > 15) { bg='rgba(22,163,74,.30)';  color='#bbf7d0'; }
+      else if (upside > 0)  { bg='rgba(22,163,74,.14)';  color='#86efac'; }
+      else if (upside > -15){ bg='rgba(239,68,68,.14)';  color='#fca5a5'; }
+      else if (upside > -30){ bg='rgba(239,68,68,.30)';  color='#f87171'; }
+      else                  { bg='rgba(239,68,68,.55)';  color='#ef4444'; }
+      const isCurrent = Math.abs(wRow - waccBase) < 0.001 && Math.abs(t - tgBase) < 0.001;
+      html += `<td style="background:${bg};color:${color}${isCurrent?';outline:2px solid var(--accent);outline-offset:-2px':''}">
+        ₪${intrinsic.toFixed(1)}<br><span style="font-size:9px;opacity:.7">${upside>=0?'+':''}${upside.toFixed(0)}%</span>
+      </td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+</script>
+</body>
+</html>

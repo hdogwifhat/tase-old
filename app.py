@@ -705,8 +705,9 @@ def index_history():
     if cached and cached.get('_ts') and (time.time() - cached['_ts']) < 300:
         return jsonify({'bars': cached.get('bars', [])})
 
-    period_map   = {'1d': '1d',  '5d': '5d',  '1mo': '1mo', '3mo': '3mo', '1y': '1y'}
-    interval_map = {'1d': '5m',  '5d': '30m', '1mo': '1d',  '3mo': '1d',  '1y': '1wk'}
+    # period → yfinance period string; interval → candle size
+    period_map   = {'1d':'1d','5d':'5d','1mo':'1mo','3mo':'3mo','6mo':'6mo','1y':'1y'}
+    interval_map = {'1d':'5m', '5d':'30m','1mo':'1h','3mo':'1d','6mo':'1d','1y':'1wk'}
     period   = period_map.get(rng, '1mo')
     interval = interval_map.get(rng, '1d')
     try:
@@ -717,10 +718,20 @@ def index_history():
             if close is None or (isinstance(close, float) and math.isnan(close)):
                 continue
             t = int(ts.timestamp()) if hasattr(ts, 'timestamp') else int(ts.value // 1e9)
-            bars.append({'time': t, 'value': round(float(close), 2)})
-        result = {'bars': bars, '_ts': time.time()}
+            def _fv(k):
+                v = row.get(k)
+                return round(float(v), 2) if v is not None and not (isinstance(v, float) and math.isnan(v)) else round(float(close), 2)
+            bars.append({
+                'time':  t,
+                'open':  _fv('Open'),
+                'high':  _fv('High'),
+                'low':   _fv('Low'),
+                'close': round(float(close), 2),
+                'value': round(float(close), 2),   # keep for line-series fallback
+            })
+        result = {'bars': bars, 'interval': interval, '_ts': time.time()}
         rset(cache_key, result, ttl=300)
-        return jsonify({'bars': bars})
+        return jsonify({'bars': bars, 'interval': interval})
     except Exception as e:
         return jsonify({'bars': [], 'error': str(e)}), 500
 
@@ -728,6 +739,11 @@ def index_history():
 @app.route('/stock/<ticker>')
 def stock_page(ticker):
     return send_from_directory(BASE_DIR, 'stock.html')
+
+
+@app.route('/dcf')
+def dcf_page():
+    return send_from_directory(BASE_DIR, 'dcf.html')
 
 
 _fx_mem = {'data': None, 'ts': 0}

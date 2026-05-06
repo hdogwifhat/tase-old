@@ -186,7 +186,7 @@
 
     #chart-wrap {
       border-radius: 6px; overflow: hidden; background: #05050a;
-      border: 1px solid var(--border); position: relative; height: 340px;
+      border: 1px solid var(--border); position: relative; height: 238px;
     }
     #chart-container { width: 100%; height: 100%; }
     .chart-spin {
@@ -486,9 +486,9 @@
           <div class="rbtn-grp" id="range-btns">
             <button class="rbtn" data-r="5D"  onclick="setRange('5D')">5D</button>
             <button class="rbtn" data-r="1M"  onclick="setRange('1M')">1M</button>
-            <button class="rbtn" data-r="3M"  onclick="setRange('3M')">3M</button>
+            <button class="rbtn active" data-r="3M"  onclick="setRange('3M')">3M</button>
             <button class="rbtn" data-r="6M"  onclick="setRange('6M')">6M</button>
-            <button class="rbtn active" data-r="1Y" onclick="setRange('1Y')">1Y</button>
+            <button class="rbtn" data-r="1Y" onclick="setRange('1Y')">1Y</button>
             <button class="rbtn" data-r="3Y"  onclick="setRange('3Y')">3Y</button>
           </div>
           <div class="rbtn-toggle">
@@ -582,7 +582,7 @@ const NA = '<span class="na">—</span>';
 const esc = v => String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 
 let chartInst = null, allOHLCV = [], finData = {}, qtrData = {};
-let curRange = '1Y', curChartMode = 'price', curPeriod = 'annual';
+let curRange = '3M', curChartMode = 'price', curPeriod = 'annual';
 let stockInfo = null, detailData = null;
 
 // ── Formatters ──────────────────────────────────────────────────────────
@@ -985,9 +985,9 @@ function initChart(ohlcv) {
     document.getElementById('ct-v').textContent = vol ? fmtVol(vol.value) : '—';
   });
 
-  curRange = '5D';
-  document.querySelectorAll('.rbtn[data-r]').forEach(b => b.classList.toggle('active', b.dataset.r==='5D'));
-  _applyChartData(ohlcv, '5D');
+  curRange = '3M';
+  document.querySelectorAll('.rbtn[data-r]').forEach(b => b.classList.toggle('active', b.dataset.r==='3M'));
+  _applyChartData(ohlcv, '3M');
   document.getElementById('chart-spin').classList.add('hidden');
 
   const ro = new ResizeObserver(e=>{

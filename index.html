@@ -526,6 +526,11 @@
     .idx-chart-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
     .idx-chart-sep { width: 1px; height: 14px; background: var(--border2); margin: 0 2px; flex-shrink: 0; }
     #idx-chart-container { flex: 1; min-height: 160px; border-radius: 6px; overflow: hidden; background: #09090d; }
+    .idx-perf-badge { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+                      padding: 2px 8px; border-radius: 4px; margin-left: 2px; display: none; }
+    .idx-perf-pos { color: #22c55e; background: rgba(34,197,94,0.12); display: inline-block; }
+    .idx-perf-neg { color: #ef4444; background: rgba(239,68,68,0.12); display: inline-block; }
+    .idx-type-btn { font-size: 13px; padding: 2px 8px; }
     .metric-strip {
       grid-column: 1 / -1;
       display: grid;
@@ -799,6 +804,7 @@
     <button class="dbtn active" id="btn-ils" onclick="setCurrency('ILS')">ILS</button>
     <button class="dbtn"        id="btn-usd" onclick="setCurrency('USD')">USD</button>
   </div>
+  <a href="/dcf" class="hdr-btn" style="text-decoration:none;color:var(--amber);border-color:var(--amber-dim);font-weight:700">∫ DCF</a>
   <button class="hdr-btn" id="btn-cols" onclick="toggleColsPanel()">&#9776; Columns</button>
   <button class="hdr-btn" id="btn-refresh" onclick="forceRefresh()">&#x21BB; Refresh</button>
 </header>
@@ -996,10 +1002,15 @@
       <button class="idx-chart-btn active" data-sym="TA35.TA" onclick="setIdxChartSym(this)">TA-35</button>
       <button class="idx-chart-btn" data-sym="TA90.TA" onclick="setIdxChartSym(this)">TA-90</button>
       <div class="idx-chart-sep"></div>
-      <button class="idx-chart-btn" data-range="5d"  onclick="setIdxChartRange(this)">5D</button>
-      <button class="idx-chart-btn active" data-range="1mo" onclick="setIdxChartRange(this)">1M</button>
+      <button class="idx-chart-btn active" data-range="5d"  onclick="setIdxChartRange(this)">5D</button>
+      <button class="idx-chart-btn" data-range="1mo" onclick="setIdxChartRange(this)">1M</button>
       <button class="idx-chart-btn" data-range="3mo" onclick="setIdxChartRange(this)">3M</button>
+      <button class="idx-chart-btn" data-range="6mo" onclick="setIdxChartRange(this)">6M</button>
       <button class="idx-chart-btn" data-range="1y"  onclick="setIdxChartRange(this)">1Y</button>
+      <div class="idx-chart-sep"></div>
+      <button class="idx-chart-btn idx-type-btn active" data-type="candle" onclick="setIdxChartType(this)" title="Candlestick">⬛</button>
+      <button class="idx-chart-btn idx-type-btn" data-type="line" onclick="setIdxChartType(this)" title="Line chart">〜</button>
+      <span class="idx-perf-badge" id="idx-perf-badge"></span>
     </div>
     <div id="idx-chart-container"></div>
   </div>
@@ -2277,34 +2288,52 @@ async function loadMarketBar() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Interactive index chart (replaces Sector Leadership panel)
 // ═══════════════════════════════════════════════════════════════════════
-let _idxChart = null, _idxSeries = null;
+// Interactive index chart — candlestick + line toggle, % badge, 5D default
+// ═══════════════════════════════════════════════════════════════════════
+let _idxChart = null, _idxSeries = null, _idxVolSeries = null;
 let _idxSym   = 'TA35.TA';
-let _idxRange  = '1mo';
+let _idxRange  = '5d';   // default: 5 days, 30-min candles
+let _idxType   = 'candle'; // 'candle' | 'line'
 
 function _initIdxChart() {
   const cont = document.getElementById('idx-chart-container');
   if (!cont) return;
-  if (_idxChart) { _idxChart.remove(); _idxChart = null; }
-  const h = Math.max(cont.offsetHeight || 0, 140);
+  if (_idxChart) { try { _idxChart.remove(); } catch {} _idxChart = null; }
+  const h = Math.max(cont.offsetHeight || 0, 160);
   _idxChart = LightweightCharts.createChart(cont, {
     width:  cont.offsetWidth || 300,
     height: h,
     layout: { background: { color: '#09090d' }, textColor: '#71717a' },
-    grid:   { vertLines: { color: '#1a1a22' }, horzLines: { color: '#1a1a22' } },
+    grid:   { vertLines: { color: '#13131b' }, horzLines: { color: '#13131b' } },
     crosshair: { mode: LightweightCharts.CrosshairMode.Magnet },
-    rightPriceScale: { borderColor: '#1f1f28' },
-    timeScale: { borderColor: '#1f1f28', timeVisible: true, secondsVisible: false },
+    rightPriceScale: { borderColor: '#1f1f28', scaleMargins: { top: 0.05, bottom: 0.15 } },
+    timeScale: { borderColor: '#1f1f28', timeVisible: true, secondsVisible: false, rightOffset: 3 },
     handleScroll: false, handleScale: false,
   });
-  _idxSeries = _idxChart.addAreaSeries({
-    lineColor: '#0066cc', topColor: 'rgba(0,102,204,0.28)', bottomColor: 'rgba(0,102,204,0.02)',
-    lineWidth: 2,
+
+  if (_idxType === 'candle') {
+    _idxSeries = _idxChart.addCandlestickSeries({
+      upColor: '#22c55e', downColor: '#ef4444',
+      borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+      wickUpColor: '#16a34a', wickDownColor: '#dc2626',
+    });
+  } else {
+    _idxSeries = _idxChart.addAreaSeries({
+      lineColor: '#0066cc', topColor: 'rgba(0,102,204,0.22)',
+      bottomColor: 'rgba(0,102,204,0.01)', lineWidth: 2,
+    });
+  }
+
+  // Volume histogram (small, bottom 12%)
+  _idxVolSeries = _idxChart.addHistogramSeries({
+    priceFormat: { type: 'volume' }, priceScaleId: 'vol',
   });
+  _idxChart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.88, bottom: 0 } });
+
   const ro = new ResizeObserver(() => {
     if (_idxChart && cont.offsetWidth > 0)
-      _idxChart.applyOptions({ width: cont.offsetWidth, height: Math.max(cont.offsetHeight, 140) });
+      _idxChart.applyOptions({ width: cont.offsetWidth, height: Math.max(cont.offsetHeight, 160) });
   });
   ro.observe(cont);
 }
@@ -2315,9 +2344,38 @@ async function _loadIdxChartData() {
   try {
     const d = await fetch(`/api/index_history?sym=${encodeURIComponent(_idxSym)}&range=${_idxRange}`).then(r => r.json());
     if (!d.bars || !d.bars.length) return;
-    const data = d.bars.map(b => ({ time: b.time, value: b.value }));
-    _idxSeries.setData(data);
+
+    if (_idxType === 'candle') {
+      _idxSeries.setData(d.bars.map(b => ({
+        time: b.time, open: b.open, high: b.high, low: b.low, close: b.close,
+      })));
+    } else {
+      _idxSeries.setData(d.bars.map(b => ({ time: b.time, value: b.close || b.value })));
+    }
+
+    // Volume bars (green/red tinted)
+    if (_idxVolSeries) {
+      _idxVolSeries.setData(d.bars.map(b => ({
+        time: b.time, value: b.volume || 0,
+        color: (b.close >= b.open) ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)',
+      })));
+    }
+
     _idxChart.timeScale().fitContent();
+
+    // % performance badge — shown after every period selection
+    const badge = document.getElementById('idx-perf-badge');
+    if (badge && d.bars.length >= 2) {
+      const first = d.bars[0].open ?? d.bars[0].value ?? d.bars[0].close;
+      const last  = d.bars[d.bars.length - 1].close ?? d.bars[d.bars.length - 1].value;
+      if (first && last && first !== 0) {
+        const pct = (last - first) / first * 100;
+        const sg  = pct >= 0 ? '+' : '';
+        const lbl = { '5d':'5D','1mo':'1M','3mo':'3M','6mo':'6M','1y':'1Y' }[_idxRange] || _idxRange.toUpperCase();
+        badge.textContent = `${lbl}: ${sg}${pct.toFixed(2)}%`;
+        badge.className   = 'idx-perf-badge ' + (pct >= 0 ? 'idx-perf-pos' : 'idx-perf-neg');
+      }
+    }
   } catch {}
 }
 
@@ -2329,6 +2387,12 @@ function setIdxChartSym(btn) {
 function setIdxChartRange(btn) {
   _idxRange = btn.dataset.range;
   btn.closest('.idx-chart-toolbar').querySelectorAll('[data-range]').forEach(b => b.classList.toggle('active', b === btn));
+  _loadIdxChartData();
+}
+function setIdxChartType(btn) {
+  _idxType = btn.dataset.type;
+  btn.closest('.idx-chart-toolbar').querySelectorAll('[data-type]').forEach(b => b.classList.toggle('active', b === btn));
+  _initIdxChart();      // recreate chart with new series type
   _loadIdxChartData();
 }
 
