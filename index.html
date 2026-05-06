@@ -1020,15 +1020,25 @@
     <strong id="view-title" onclick="openScreenerView()">All equities</strong>
   </div>
   <span id="view-summary">Sorted by market cap</span>
+  <button class="btn-clear" onclick="exportCSV()" style="margin-left:auto;color:var(--accent);border-color:var(--accent-dim)" title="Export current filtered view to CSV">⬇ CSV</button>
 </div>
 
 <section id="focus-view" class="hidden"></section>
 
 <div class="table-wrap">
   <!-- Sector heatmap view (shown instead of table) -->
-  <div id="heatmap-view" class="hidden" style="padding:20px 24px 20px">
-    <div style="font-size:11px;color:var(--text3);margin-bottom:12px">
-      Sector performance · size = market cap · color = avg daily change
+  <div id="heatmap-view" class="hidden" style="padding:16px 24px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+      <span style="font-size:11px;color:var(--text3)">Sector performance · size = market cap</span>
+      <label style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.06em">Color</label>
+      <select id="heat-var-sel-mini" onchange="setHeatVar(this)"
+        style="background:var(--surface2);border:1px solid var(--border2);color:var(--text2);
+               padding:3px 7px;border-radius:5px;font-size:11px;font-family:inherit;cursor:pointer">
+        <option value="change_pct">Daily Chg %</option>
+        <option value="pb_ratio">P/B Ratio</option>
+        <option value="div_yield">Div Yield %</option>
+        <option value="return_1m">1M Return %</option>
+      </select>
     </div>
     <div id="heatmap-grid" style="display:flex;flex-wrap:wrap;gap:6px"></div>
   </div>
@@ -1964,20 +1974,22 @@ function renderMarketHeatmap(rows, targetId, opts={}) {
       const stockRects = [];
       _tmSplit(stockItems, 0, 0, innerW, innerH, stockRects);
       stockHtml = stockRects.map(({ item: si2, x: tx, y: ty, w: tw, h: th }) => {
-        const s   = si2.s;
-        const chg = Number(s.change_pct) || 0;
-        const sg  = chg > 0 ? '+' : '';
+        const s      = si2.s;
+        const chg    = Number(s.change_pct) || 0;
+        const sg     = chg > 0 ? '+' : '';
+        const tileBg = _varColor(s);
+        const tileVal = _varLabel(s);
         const showText = tw >= 28 && th >= 22;
-        const showPct  = tw >= 36 && th >= 38;
+        const showVal  = tw >= 36 && th >= 38;
         return `<div onclick="event.stopPropagation();gotoStock('${s.ticker}')"
-          title="${esc(s.name)} · ${sg}${chg.toFixed(2)}%"
+          title="${esc(s.name)} · ${_HEAT_VARS[_heatVar]?.label ?? 'Daily Chg'}: ${tileVal}"
           style="position:absolute;left:${tx}px;top:${ty}px;width:${tw}px;height:${th}px;
-                 background:${heatColor(chg)};border:1px solid rgba(0,0,0,0.35);
+                 background:${tileBg};border:1px solid rgba(0,0,0,0.35);
                  box-sizing:border-box;cursor:pointer;overflow:hidden;
                  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
                  transition:filter 0.12s" onmouseover="this.style.filter='brightness(1.2)'" onmouseout="this.style.filter=''">
           ${showText ? `<div style="font-family:'JetBrains Mono',monospace;font-weight:800;font-size:${tw>60?13:10}px;color:#fff;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90%;line-height:1.1">${esc(s.ticker)}</div>` : ''}
-          ${showPct  ? `<div style="font-size:${tw>60?11:9}px;font-weight:700;color:rgba(255,255,255,0.9);font-family:'JetBrains Mono',monospace">${sg}${chg.toFixed(2)}%</div>` : ''}
+          ${showVal  ? `<div style="font-size:${tw>60?11:9}px;font-weight:700;color:rgba(255,255,255,0.9);font-family:'JetBrains Mono',monospace">${tileVal}</div>` : ''}
         </div>`;
       }).join('');
     }
@@ -2193,10 +2205,27 @@ function renderFocusContent(kind) {
   }
 
   if (kind === 'heatmap') {
-    focus.innerHTML = focusShell('Market Heatmap', 'Grouped by sector. Tile size = market cap, color = daily price change',
-      '<div id="full-heatmap" style="width:100%;"></div>');
-    // Defer until layout is painted so clientWidth/clientHeight are non-zero
-    requestAnimationFrame(() => renderMarketHeatmap(rows, 'full-heatmap', {compact: false}));
+    const heatDropdown = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Color by</span>
+        <select id="heat-var-sel-full" onchange="setHeatVar(this);document.getElementById('heat-var-sel-mini').value=this.value"
+          style="background:var(--surface2);border:1px solid var(--border2);color:var(--text2);
+                 padding:4px 10px;border-radius:5px;font-size:12px;font-family:inherit;cursor:pointer">
+          <option value="change_pct">Daily Chg %</option>
+          <option value="pb_ratio">P/B Ratio</option>
+          <option value="div_yield">Div Yield %</option>
+          <option value="return_1m">1M Return %</option>
+        </select>
+        <span style="font-size:10px;color:var(--text3)">Tile size = market cap</span>
+      </div>
+      <div id="full-heatmap" style="width:100%;"></div>`;
+    focus.innerHTML = focusShell('Market Heatmap', '', heatDropdown);
+    // Sync dropdown to current state, then render
+    requestAnimationFrame(() => {
+      const sel = document.getElementById('heat-var-sel-full');
+      if (sel) sel.value = _heatVar;
+      renderMarketHeatmap(rows, 'full-heatmap', {compact: false});
+    });
   }
 }
 
@@ -2501,6 +2530,72 @@ const _fmtPBase = fmtP;
 // We redefine these after init so they close over ilsPerUsd / currency
 
 // ═══════════════════════════════════════════════════════════════════════
+// Heatmap — modular color variable
+// ═══════════════════════════════════════════════════════════════════════
+let _heatVar = 'change_pct';   // 'change_pct' | 'pb_ratio' | 'div_yield' | 'return_1m'
+
+const _HEAT_VARS = {
+  change_pct: { label: 'Daily Chg %',  get: s => s.change_pct },
+  pb_ratio:   { label: 'P/B Ratio',    get: s => s.pb_ratio   },
+  div_yield:  { label: 'Div Yield %',  get: s => s.div_yield  },
+  return_1m:  { label: '1M Return %',  get: s => { const sp = sparklines[s.ticker]; return sp?.length ? sp[sp.length-1] : null; } },
+};
+
+function _varColor(s) {
+  const vd = _HEAT_VARS[_heatVar];
+  const raw = vd ? vd.get(s) : null;
+  if (raw == null) return 'rgba(82,82,91,0.22)';
+  const v = Number(raw);
+
+  switch (_heatVar) {
+    case 'change_pct':
+    case 'return_1m': {
+      const intensity = Math.min(Math.abs(v) / 6, 1);
+      if (v > 0) return `rgba(34,197,94,${(0.18 + intensity * 0.65).toFixed(2)})`;
+      if (v < 0) return `rgba(239,68,68,${(0.18 + intensity * 0.65).toFixed(2)})`;
+      return 'rgba(82,82,91,0.32)';
+    }
+    case 'pb_ratio': {
+      // cheap (green) → fair (grey) → rich (amber) → expensive (red)
+      if (v <= 0)  return 'rgba(82,82,91,0.22)';
+      if (v < 1)   return 'rgba(34,197,94,0.72)';
+      if (v < 2)   return 'rgba(34,197,94,0.38)';
+      if (v < 3.5) return 'rgba(82,82,91,0.32)';
+      if (v < 6)   return 'rgba(245,158,11,0.52)';
+      return              'rgba(239,68,68,0.65)';
+    }
+    case 'div_yield': {
+      if (v <= 0)  return 'rgba(82,82,91,0.22)';
+      if (v >= 7)  return 'rgba(34,197,94,0.80)';
+      if (v >= 4)  return 'rgba(34,197,94,0.50)';
+      if (v >= 2)  return 'rgba(34,197,94,0.25)';
+      return              'rgba(82,82,91,0.22)';
+    }
+    default: return heatColor(v);
+  }
+}
+
+function _varLabel(s) {
+  const vd = _HEAT_VARS[_heatVar];
+  const raw = vd ? vd.get(s) : null;
+  if (raw == null) return '—';
+  const v = Number(raw);
+  switch (_heatVar) {
+    case 'pb_ratio':  return v.toFixed(1) + 'x';
+    case 'div_yield': return v > 0 ? v.toFixed(1) + '%' : '—';
+    default:          return (v > 0 ? '+' : '') + v.toFixed(2) + '%';
+  }
+}
+
+function setHeatVar(sel) {
+  _heatVar = sel.value;
+  // Refresh whichever heatmap is currently active
+  if (heatmapVisible) renderHeatmap();
+  const fhEl = document.getElementById('full-heatmap');
+  if (fhEl) renderMarketHeatmap(currentRows.length ? currentRows : allStocks, 'full-heatmap', {compact: false});
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Sector heatmap
 // ═══════════════════════════════════════════════════════════════════════
 let heatmapVisible = false;
@@ -2524,32 +2619,123 @@ function renderHeatmap() {
   }
 
   const totalCap = Object.values(sectors).reduce((a, b) => a + b.totalCap, 0) || 1;
-  const MAX_PCT = 700;
+  const vd = _HEAT_VARS[_heatVar];
 
   const cells = Object.entries(sectors)
     .sort((a, b) => b[1].totalCap - a[1].totalCap)
     .map(([name, data]) => {
-      const avgChg = data.count ? data.sumChg / data.count : 0;
-      const sizePct = Math.max(8, Math.min((data.totalCap / totalCap) * MAX_PCT, 240));
-      const intensity = Math.min(Math.abs(avgChg) / 3, 1);
-      const bg = avgChg > 0
-        ? `rgba(34,197,94,${0.1 + intensity * 0.35})`
-        : avgChg < 0 ? `rgba(239,68,68,${0.1 + intensity * 0.35})`
-        : 'var(--surface2)';
-      const chgColor = avgChg > 0 ? 'var(--green)' : avgChg < 0 ? 'var(--red)' : 'var(--text3)';
-      const sign = avgChg > 0 ? '+' : '';
+      const sizePct = Math.max(8, Math.min((data.totalCap / totalCap) * 700, 240));
+      // Aggregate the color variable across sector stocks
+      const vals = data.stocks.map(s => vd.get(s)).filter(v => v != null);
+      const capWt = data.stocks.reduce((acc, s) => {
+        const v = vd.get(s); return v != null ? acc + (s.market_cap || 0) : acc;
+      }, 0) || 1;
+      const aggVal = vals.length
+        ? data.stocks.reduce((acc, s) => { const v = vd.get(s); return v != null ? acc + v * (s.market_cap || 0) / capWt : acc; }, 0)
+        : null;
+
+      // Build a proxy stock object for the sector aggregate color
+      const proxy = { ..._HEAT_VARS, [_heatVar.replace(/[^a-z_]/g,'')]: aggVal,
+                      change_pct: data.count ? data.sumChg / data.count : 0,
+                      pb_ratio: aggVal, div_yield: aggVal, return_1m: aggVal };
+      const bg = aggVal != null ? _varColor({ change_pct: aggVal, pb_ratio: aggVal, div_yield: aggVal, return_1m: aggVal, ...Object.fromEntries([[_heatVar, aggVal]]) }) : 'var(--surface2)';
+      const displayVal = aggVal != null ? (_heatVar==='pb_ratio' ? aggVal.toFixed(1)+'x' : (aggVal>0?'+':'')+aggVal.toFixed(2)+'%') : '—';
+      const valColor = _heatVar === 'change_pct' || _heatVar === 'return_1m'
+        ? (aggVal > 0 ? 'var(--green)' : aggVal < 0 ? 'var(--red)' : 'var(--text3)')
+        : 'var(--text)';
+
       return `<div onclick="setPill('');document.getElementById('f-search').value='${name}';applyFilters()"
-        style="background:${bg};border:1px solid var(--border2);border-radius:8px;
-               padding:10px 14px;min-width:${sizePct}px;cursor:pointer;transition:all .15s"
+        style="background:${bg};border:1px solid var(--border2);border-radius:6px;
+               padding:8px 12px;min-width:${sizePct}px;cursor:pointer;transition:all .15s"
         onmouseover="this.style.border='1px solid var(--accent)'"
         onmouseout="this.style.border='1px solid var(--border2)'">
-        <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:3px">${name}</div>
-        <div style="font-size:18px;font-weight:700;color:${chgColor}">${sign}${avgChg.toFixed(2)}%</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:2px">${data.stocks.length} stocks</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
+        <div style="font-size:16px;font-weight:700;color:${valColor};font-family:'JetBrains Mono',monospace">${displayVal}</div>
+        <div style="font-size:9px;color:var(--text3);margin-top:2px">${data.stocks.length} stocks</div>
       </div>`;
     });
 
   document.getElementById('heatmap-grid').innerHTML = cells.join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// CSV Export — current filtered view, all fundamental columns
+// ═══════════════════════════════════════════════════════════════════════
+function exportCSV() {
+  const rows = currentRows.length ? currentRows : allStocks;
+  if (!rows.length) return;
+
+  // All columns — raw values for Excel usability
+  const FIELDS = [
+    { h: 'Ticker',         v: s => s.ticker },
+    { h: 'Name',           v: s => s.name || '' },
+    { h: 'Price (ILS)',    v: s => s.price ?? '' },
+    { h: 'Change %',       v: s => s.change_pct ?? '' },
+    { h: 'Market Cap',     v: s => s.market_cap ?? '' },
+    { h: 'Sector',         v: s => s.sector || '' },
+    { h: 'Industry',       v: s => s.industry || '' },
+    // Valuation
+    { h: 'P/E',            v: s => s.pe ?? '' },
+    { h: 'Fwd P/E',        v: s => s.forward_pe ?? '' },
+    { h: 'EV/EBITDA',      v: s => s.ev_ebitda ?? '' },
+    { h: 'EV/FCF',         v: s => s.ev_fcf ?? '' },
+    { h: 'P/S',            v: s => s.ps_ratio ?? '' },
+    { h: 'P/B',            v: s => s.pb_ratio ?? '' },
+    { h: 'Beta',           v: s => s.beta ?? '' },
+    { h: 'Div Yield %',    v: s => s.div_yield ?? '' },
+    { h: 'EPS (TTM)',      v: s => s.eps ?? '' },
+    // Profitability & Returns
+    { h: 'ROIC %',         v: s => s.roic ?? '' },
+    { h: 'WACC %',         v: s => s.wacc ?? '' },
+    { h: 'ROE %',          v: s => s.roe ?? '' },
+    { h: 'ROA %',          v: s => s.roa ?? '' },
+    { h: 'Gross Margin %', v: s => s.gross_margin ?? '' },
+    { h: 'Op Margin %',    v: s => s.op_margin ?? '' },
+    { h: 'Net Margin %',   v: s => s.net_margin ?? '' },
+    { h: 'Rev Growth %',   v: s => s.revenue_growth ?? '' },
+    { h: 'EPS Growth %',   v: s => s.eps_growth ?? '' },
+    // Financial Health
+    { h: 'D/E',            v: s => s.debt_equity ?? '' },
+    { h: 'Current Ratio',  v: s => s.current_ratio ?? '' },
+    { h: 'Quick Ratio',    v: s => s.quick_ratio ?? '' },
+    // Market / Trading
+    { h: 'Volume',         v: s => s.volume ?? '' },
+    { h: 'ADV 3M (ILS)',   v: s => s.adv_ils ?? '' },
+    { h: '52W High',       v: s => s.week52_high ?? '' },
+    { h: '52W Low',        v: s => s.week52_low ?? '' },
+    // RE-specific
+    { h: 'P/FFO',          v: s => s.p_ffo ?? '' },
+    { h: 'FFO Yield %',    v: s => s.ffo_yield ?? '' },
+    { h: 'Cap Rate % (impl.)', v: s => s.cap_rate_implied ?? '' },
+    { h: 'NAV Discount %', v: s => s.nav_discount ?? '' },
+    // Analyst
+    { h: 'Analyst Rating', v: s => s.analyst_rating || '' },
+    { h: 'Buy',            v: s => s.analyst_buy ?? '' },
+    { h: 'Hold',           v: s => s.analyst_hold ?? '' },
+    { h: 'Sell',           v: s => s.analyst_sell ?? '' },
+  ];
+
+  const esc_csv = v => {
+    const s = String(v);
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? '"' + s.replace(/"/g, '""') + '"'
+      : s;
+  };
+
+  const header = FIELDS.map(f => esc_csv(f.h)).join(',');
+  const body   = rows.map(s => FIELDS.map(f => esc_csv(f.v(s))).join(',')).join('\n');
+  const csv    = '﻿' + header + '\n' + body;   // BOM for Excel Hebrew support
+
+  const date = new Date().toISOString().slice(0, 10);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `TASE_screener_${date}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
