@@ -102,53 +102,74 @@ def _years(df, n=5):
 
 # ── Self-computed ratios (fallback when stock.info doesn't provide them) ───
 
-def _compute_re_metrics(ratios, info, fin, bs, cf):
+def _compute_re_metrics(ratios, info, fin, bs, cf, re_only=False):
     """
     Real-estate-specific metrics for Israeli נדל"ן מניב / יזמי companies.
-    Only meaningful for Real Estate / REIT sector; safe to compute for all.
 
-    FFO  = Net Income + D&A − Net gains on property sales
-    AFFO = FFO − recurring maintenance capex (proxy: total capex × 0.5)
-    Implied Cap Rate = Operating Income / Total Assets (rough proxy for NOI/AV)
+    re_only: if True, only compute FFO/AFFO/P_FFO/FFO_Yield (which require a
+             property-sector context). NAV Discount and Cap Rate are always
+             computed — they're interpretable for any sector.
+
+    FFO  = Operating Cash Flow (preferred — already strips non-cash IFRS IAS-40
+           fair value revaluations that inflate Net Income for Israeli RE cos)
+           Fallback: Net Income + D&A − Net gains on property sales
+    AFFO = OCF − maintenance capex (50% of PP&E capex, excludes IP purchases)
+    Implied Cap Rate = Operating Income / Total Assets (rough NOI/AV proxy)
     P/FFO = Market Cap / FFO  (replaces P/E for RE)
     FFO Yield = FFO / Market Cap × 100
+    NAV Discount = (Book Equity − Mkt Cap) / Mkt Cap × 100
+                   Positive → trading at discount to book (cheap)
+                   Negative → trading at premium to book (expensive)
     """
     mkt = info.get('marketCap') or 0
 
-    ni  = _latest(fin, 'Net Income Common', 'Net Income')
-    da  = _latest(fin, 'Depreciation And Amortization', 'Depreciation Amortization Depletion',
-                  'Depreciation')
-    # Property gains are reported under various names in Israeli RE statements
-    prop_gain = _latest(fin, 'Gain On Sale Of Properties', 'Net Realized Gain',
-                        'Gain Loss On Sale Of Properties',
-                        'Net Income From Real Estate Investment',
-                        'Revaluation Surplus') or 0
+    # ── FFO / AFFO / P/FFO / FFO Yield — Real estate sector only ─────────
+    if re_only:
+        # Prefer OCF: naturally strips non-cash IFRS IAS-40 fair value gains
+        ocf   = _latest(cf, 'Operating Cash Flow')
+        capex = _latest(cf, 'Capital Expenditure') or 0   # negative in yfinance
 
-    if ni is not None and da is not None:
-        ffo = ni + da - prop_gain
-        ratios['ffo'] = ffo
+        if ocf is not None:
+            ffo = ocf
+            # AFFO = OCF minus maintenance capex proxy (50% of PP&E capex)
+            ratios['affo'] = int(round(ffo + (capex * 0.5), 0))
+        else:
+            # Fallback: Net Income + D&A (less accurate for IFRS RE — includes FV gains)
+            ni  = _latest(fin, 'Net Income Common', 'Net Income')
+            da  = _latest(fin, 'Depreciation And Amortization', 'Depreciation Amortization Depletion',
+                          'Depreciation')
+            prop_gain = _latest(fin, 'Gain On Sale Of Properties', 'Net Realized Gain',
+                                'Gain Loss On Sale Of Properties',
+                                'Revaluation Surplus') or 0
+            if ni is not None and da is not None:
+                ffo = ni + da - prop_gain
+                ratios['affo'] = int(round(ffo + (capex * 0.5), 0))
+            else:
+                ffo = None
 
-        if mkt and mkt > 0:
-            ratios['p_ffo']    = _f(mkt / ffo) if ffo > 0 else None
-            ratios['ffo_yield'] = round(ffo / mkt * 100, 2) if ffo > 0 else None
+        if ffo is not None:
+            ratios['ffo'] = int(ffo)
+            if mkt and mkt > 0 and ffo > 0:
+                ratios['p_ffo']     = _f(mkt / ffo)
+                ratios['ffo_yield'] = round(ffo / mkt * 100, 2)
 
-        # AFFO: subtract 50% of total capex as maintenance proxy
-        capex = _latest(cf, 'Capital Expenditure') or 0
-        ratios['affo'] = ffo + (capex * 0.5)  # capex is negative in yfinance
-
-    # Implied Cap Rate ≈ Operating Income / Total Assets
+    # ── Implied Cap Rate ≈ Operating Income / Total Assets ─────────────────
+    # Meaningful for RE but kept for all sectors (shows asset profitability)
     oi = _latest(fin, 'Operating Income', 'EBIT')
     ta = _latest(bs, 'Total Assets')
     if oi and ta and ta > 0:
         ratios['cap_rate_implied'] = round(oi / ta * 100, 2)
 
-    # NAV Discount: (Book Equity − Mkt Cap) / Book Equity
+    # ── NAV Discount/Premium: (Book Equity − Mkt Cap) / Mkt Cap × 100 ─────
+    # Kept for all sectors — for RE it's literal NAV; for others it's P/B signal.
+    # Positive = stock at discount to book (trading below NAV) → potentially cheap
+    # Negative = stock at premium to book (trading above NAV) → premium valuation
     eq = _latest(bs, 'Stockholders Equity', 'Common Stock Equity')
-    if eq and eq > 0 and mkt:
-        ratios['nav_discount'] = round((eq - mkt) / eq * 100, 2)
+    if eq and eq > 0 and mkt and mkt > 0:
+        ratios['nav_discount'] = round((eq - mkt) / mkt * 100, 2)
 
 
-def _compute_missing(ratios, info, fin, bs):
+def _compute_missing(ratios, info, fin, bs, cf=None):
     """
     Fill in any null ratios by computing them from raw financial statements.
     Works for banks, real-estate, and other stocks where Yahoo pre-computed
@@ -388,9 +409,13 @@ def fetch_financials(ticker: str) -> dict:
     cf  = stock.cashflow
 
     # Self-compute any still-null ratios from raw statements
-    _compute_missing(ratios, info, fin, bs)
-    # Phase 3: RE metrics (safe to compute for all — only meaningful for RE sector)
-    _compute_re_metrics(ratios, info, fin, bs, cf)
+    _compute_missing(ratios, info, fin, bs, cf)
+    # Phase 3: RE-specific metrics — only compute for Real Estate sector stocks.
+    # FFO/P-FFO via OCF is meaningful ONLY for property companies; applying it to
+    # banks or tech produces misleading values (banks have enormous operating CFs).
+    sector_lower = (info.get('sector') or '').lower()
+    is_re_sector = 'real estate' in sector_lower or 'reit' in sector_lower
+    _compute_re_metrics(ratios, info, fin, bs, cf, re_only=is_re_sector)
 
     # Build multi-year financial tables
     fin_years = _years(fin) or _years(bs) or _years(cf)

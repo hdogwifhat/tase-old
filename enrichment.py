@@ -7,7 +7,7 @@ Data sources (in order of usage):
                         Provides: P/S, EV/EBITDA, P/B, D/E, Current Ratio,
                                   ROE, ROA, Revenue Growth, EPS Growth,
                                   Gross/Op/Net margins, Forward P/E, Beta.
-  2. FMP stable/profile — company description, CEO, logo, IPO date.
+  2. FMP stable/profile — company description, CEO, logo, IPO date, canonical name.
   3. Finnhub stock/recommendation — analyst Buy/Hold/Sell counts.
 
 Note: MAYA / TASE REST API / Bizportal are all WAF-blocked for programmatic
@@ -96,6 +96,7 @@ def _rating(rec):
 
 def _empty():
     return {
+        'company_name': None,   # canonical name from FMP (overrides yfinance bugs)
         'sector': None, 'industry': None,
         'description': None, 'ceo': None, 'employees': None,
         'website': None, 'logo': None, 'ipo_date': None,
@@ -144,7 +145,8 @@ def build_enrichment(yf_stocks):
         # ── 1. Financial ratios via tase_financials (yfinance + SQLite) ────
         try:
             fin = get_financials(tk)
-        except Exception:
+        except Exception as ex:
+            print(f'  [Enrich] tase_financials error for {tk}: {ex}')
             fin = {}
 
         # ── 2. FMP profile ──────────────────────────────────────────────────
@@ -154,7 +156,16 @@ def build_enrichment(yf_stocks):
         rec = _fnh_rec(bare)
         time.sleep(1.1)   # Finnhub: 60 calls/min limit
 
+        # Canonical company name: prefer FMP (accurate for dual-listed stocks),
+        # fall back to yfinance name from worker (may have wrong names like
+        # CYBR.TA → "PALO ALTO NETWORKS" due to yfinance data quality bugs).
+        fmp_name = (prof.get('companyName') or prof.get('name') or '').strip()
+        fin_name = (fin.get('name') or '').strip()
+        canonical_name = fmp_name or fin_name or None
+
         result[tk] = {
+            # Canonical name (FMP-sourced, overrides yfinance screener name)
+            'company_name':   canonical_name,
             # Profile
             'sector':      (prof.get('sector')   or fin.get('sector')   or None),
             'industry':    (prof.get('industry') or fin.get('industry') or None),

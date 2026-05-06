@@ -88,6 +88,11 @@ def merge_enrichment(stocks, enrich_data=None):
     for s in stocks:
         row = dict(s)
         e = enrich_data.get(s['ticker'], {})
+        # Override company name with FMP-sourced canonical name when available.
+        # yfinance sometimes returns US ticker names for dual-listed Israeli stocks
+        # (e.g. CYBR.TA → "PALO ALTO NETWORKS" instead of "CyberArk Software").
+        if e.get('company_name'):
+            row['name'] = e['company_name']
         row['sector']         = e.get('sector')         or row.get('sector', '')
         row['industry']       = e.get('industry')
         row['ps_ratio']       = e.get('ps_ratio')

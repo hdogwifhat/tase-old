@@ -43,10 +43,22 @@ DETAIL_TTL = 3600    # 1 hr
 
 # ── Stock screener ────────────────────────────────────────────────────────────
 
+import re as _re
+_BOND_WARRANT_PAT = _re.compile(
+    r'-B\d|\.B\d|'      # bond series: -B7, -B22, .B1
+    r'-P\d|\.P\d|'      # warrant series: -P5
+    r'-C\d|'            # convertible bond series
+    r'-M\d|'            # mortgage bond series
+    r'[A-Z]+-B\d\d?\.TA$'  # e.g. MLRN-B7.TA, MLSR-B22.TA
+)
+
 def _parse_quote(s):
     symbol    = s.get('symbol')
     price_ila = s.get('regularMarketPrice')
     if not symbol or not price_ila or price_ila <= 0:
+        return None
+    # Filter out bonds, warrants, and structured products — not equities
+    if _BOND_WARRANT_PAT.search(symbol):
         return None
     divide     = s.get('currency', '') == 'ILA'
     price_ils  = round(price_ila / 100, 2) if divide else round(price_ila, 2)
