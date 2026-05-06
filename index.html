@@ -2654,16 +2654,6 @@ function _renderBondHub() {
 
   const el = document.getElementById('bond-hub-content');
   el.innerHTML = `
-    <!-- Education note -->
-    <div class="bond-edu">
-      <strong>Israeli Corporate Bonds (אגרות חוב סדרתיות)</strong> — Israel has one of the world's most active
-      corporate bond markets relative to GDP. Most TASE-listed companies issue bonds (called "series" / סדרה)
-      traded alongside their equity. Prices shown as <strong>% of face value (par = 100)</strong>.
-      Many Israeli bonds are <strong>CPI-linked (צמודות מדד)</strong>. Ratings by
-      <strong>Maalot (מעלות)</strong> / S&amp;P or <strong>Midroog (מדרוג)</strong> / Moody's.
-      <span style="color:var(--text3)">YTM · Duration · Rating · CPI-linkage require TASE API or Bloomberg access.</span>
-    </div>
-
     <!-- Summary strip -->
     <div class="bond-summary-strip">
       <div class="bss-cell"><div class="bss-lbl">Total Bonds</div><div class="bss-val">${all.length}</div></div>
@@ -2690,8 +2680,8 @@ function _renderBondHub() {
         <option value="">All sectors</option>
         ${sectors.map(s=>`<option value="${s}">${s}</option>`).join('')}
       </select>
-      <span class="bond-data-note">
-        💡 YTM · Duration · Coupon · Rating → requires TASE API / Bloomberg / Maya filings
+      <span class="bond-data-note" style="font-size:10px;color:var(--text3)">
+        YTM · Duration · Rating require Bloomberg / TASE API
       </span>
     </div>
 

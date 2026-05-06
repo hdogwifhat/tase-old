@@ -21,6 +21,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 _refresh_lock = threading.Lock()
 _bond_lock    = threading.Lock()
+import re as _re_app
 
 # ── Direct Yahoo Finance v8 chart API (10-20× faster than yfinance wrapper) ──
 
@@ -75,21 +76,91 @@ def _fetch_chart_v8(sym, period, interval):
         return None
 
 
-# ── Background bond refresh ───────────────────────────────────────────────────
+# ── Background bond fetch (self-contained, no worker import) ─────────────────
+
+_BOND_PAT = _re_app.compile(r'^([A-Z]+)-B(\d+)\.TA$')
 
 def _background_bond_refresh():
-    """Fetch all TASE bonds in a background thread and cache in Redis."""
+    """
+    Fetch all TASE corporate bond instruments directly (no worker import).
+    Uses yfinance EquityQuery to get all TLV instruments, filters for -BN.TA pattern.
+    Bonds are priced in ILA; raw ILA value = % of par (100 ILA = 1 ILS = par).
+    Stores enriched bond list in Redis under tase:bonds (1hr TTL).
+    """
     if not _bond_lock.acquire(blocking=False):
+        print('[App] Bond fetch already running — skipped.', flush=True)
         return
     try:
-        print('[App] Background bond fetch starting…', flush=True)
-        from worker import fetch_bonds
-        fetch_bonds()
-        print('[App] Background bond fetch complete.', flush=True)
+        print('[App] Bond fetch starting…', flush=True)
+        from yfinance import EquityQuery, screen as yf_screen
+
+        q = EquityQuery('eq', ['exchange', 'TLV'])
+        all_quotes, offset = [], 0
+        while True:
+            try:
+                res    = yf_screen(q, sortField='intradaymarketcap', sortAsc=False,
+                                   offset=offset, size=100)
+                quotes = res.get('quotes', [])
+                if not quotes:
+                    break
+                all_quotes.extend(quotes)
+                total = res.get('total', 0)
+                offset += 100
+                if offset >= total:
+                    break
+            except Exception as page_err:
+                print(f'[App] Bond page error at offset {offset}: {page_err}', flush=True)
+                break
+
+        bonds = []
+        for s in all_quotes:
+            sym = s.get('symbol', '')
+            m   = _BOND_PAT.match(sym)
+            if not m:
+                continue
+            issuer_tk = m.group(1)
+            series_n  = int(m.group(2))
+            price_ila = s.get('regularMarketPrice')
+            if not price_ila or price_ila <= 0:
+                continue
+            # ILA raw price = % of par (par = 1 ILS = 100 ILA per unit)
+            price_pct = round(float(price_ila), 2)
+            chg       = s.get('regularMarketChangePercent')
+            vol       = s.get('regularMarketVolume')
+            mktcap    = s.get('marketCap')
+            h52       = s.get('fiftyTwoWeekHigh')
+            l52       = s.get('fiftyTwoWeekLow')
+            bonds.append({
+                'symbol':       sym.replace('.TA', ''),
+                'issuer':       issuer_tk,
+                'series':       f'B{series_n}',
+                'series_num':   series_n,
+                'price_pct':    price_pct,
+                'change_pct':   round(float(chg), 2) if chg is not None else None,
+                'volume':       int(vol)    if vol    else 0,
+                'market_value': int(mktcap) if mktcap else 0,
+                'high52_pct':   round(float(h52), 2) if h52 else None,
+                'low52_pct':    round(float(l52),  2) if l52 else None,
+            })
+
+        bonds.sort(key=lambda x: x.get('market_value') or 0, reverse=True)
+        rset('tase:bonds', {'data': bonds, 'timestamp': time.time()}, ttl=3600)
+        print(f'[App] Bond fetch complete — {len(bonds)} bonds cached.', flush=True)
     except Exception as e:
         print(f'[App] Bond fetch error: {e}', flush=True)
     finally:
         _bond_lock.release()
+
+
+def _startup_bond_fetch():
+    """Trigger bond fetch 10s after startup if cache is cold."""
+    time.sleep(10)
+    cached = rget('tase:bonds')
+    if not cached or not cached.get('data'):
+        _background_bond_refresh()
+
+# Kick off bond pre-load on app startup (non-blocking)
+threading.Thread(target=_startup_bond_fetch, daemon=True).start()
 
 
 def _background_refresh():
@@ -835,12 +906,15 @@ def bonds_api():
     If bond cache is cold, triggers a background fetch and returns fetching=True
     so the frontend can poll again in ~60 seconds.
     """
-    cached = rget('tase:bonds')
-    if not cached or not cached.get('data'):
-        # Kick off a background fetch so the next request (after ~60s) will have data
+    cached    = rget('tase:bonds')
+    has_data  = cached and isinstance(cached.get('data'), list) and len(cached['data']) > 0
+    is_active = _bond_lock.locked()   # fetch already running?
+
+    if not has_data and not is_active:
         threading.Thread(target=_background_bond_refresh, daemon=True).start()
+    if not has_data:
         return jsonify({'bonds': [], 'timestamp': 0, 'fetching': True,
-                        'message': 'Fetching bond data… this takes ~60 seconds on first load. Refresh the tab shortly.'})
+                        'message': 'Fetching TASE bond data… ~60 s on first load.'})
 
     bonds = cached.get('data', [])
     ts    = cached.get('timestamp', 0)
