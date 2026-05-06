@@ -20,6 +20,77 @@ app      = Flask(__name__, static_folder=BASE_DIR)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 _refresh_lock = threading.Lock()
+_bond_lock    = threading.Lock()
+
+# ── Direct Yahoo Finance v8 chart API (10-20× faster than yfinance wrapper) ──
+
+_YF_CHART_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Accept': 'application/json',
+}
+
+def _fetch_chart_v8(sym, period, interval):
+    """
+    Call the Yahoo Finance v8 chart endpoint directly.
+    Returns list of bar dicts {time,open,high,low,close,value} or None on failure.
+    Much faster than the yfinance Python wrapper (~300ms vs 3-8s).
+    """
+    url = f'https://query1.finance.yahoo.com/v8/finance/chart/{sym}'
+    params = {'interval': interval, 'range': period,
+              'events': 'div,split', 'includePrePost': 'false'}
+    try:
+        r = _req_mod.get(url, params=params, headers=_YF_CHART_HEADERS, timeout=12)
+        if r.status_code != 200:
+            return None
+        data   = r.json()
+        result = data.get('chart', {}).get('result') or []
+        if not result:
+            return None
+        chart  = result[0]
+        stamps = chart.get('timestamp') or []
+        quote  = (chart.get('indicators', {}).get('quote') or [{}])[0]
+        opens  = quote.get('open',   [])
+        highs  = quote.get('high',   [])
+        lows   = quote.get('low',    [])
+        closes = quote.get('close',  [])
+
+        bars = []
+        for i, ts in enumerate(stamps):
+            c = closes[i] if i < len(closes) else None
+            if c is None or (isinstance(c, float) and math.isnan(c)):
+                continue
+            def _g(arr, idx, fallback):
+                v = arr[idx] if idx < len(arr) else None
+                return fallback if (v is None or (isinstance(v, float) and math.isnan(v))) else round(float(v), 2)
+            bars.append({
+                'time':  int(ts),
+                'open':  _g(opens, i, round(c, 2)),
+                'high':  _g(highs, i, round(c, 2)),
+                'low':   _g(lows,  i, round(c, 2)),
+                'close': round(float(c), 2),
+                'value': round(float(c), 2),
+            })
+        return bars or None
+    except Exception:
+        return None
+
+
+# ── Background bond refresh ───────────────────────────────────────────────────
+
+def _background_bond_refresh():
+    """Fetch all TASE bonds in a background thread and cache in Redis."""
+    if not _bond_lock.acquire(blocking=False):
+        return
+    try:
+        print('[App] Background bond fetch starting…', flush=True)
+        from worker import fetch_bonds
+        fetch_bonds()
+        print('[App] Background bond fetch complete.', flush=True)
+    except Exception as e:
+        print(f'[App] Bond fetch error: {e}', flush=True)
+    finally:
+        _bond_lock.release()
+
 
 def _background_refresh():
     """Fetch fresh stock data in a background thread and write to Redis/file."""
@@ -698,42 +769,53 @@ def sparklines():
 
 @app.route('/api/index_history')
 def index_history():
-    sym   = request.args.get('sym', '^TA125')
-    rng   = request.args.get('range', '1mo')
-    cache_key = f'tase:idxhist:{sym}:{rng}'
-    cached = rget(cache_key)
-    if cached and cached.get('_ts') and (time.time() - cached['_ts']) < 300:
-        return jsonify({'bars': cached.get('bars', [])})
+    sym = request.args.get('sym', 'TA35.TA')
+    rng = request.args.get('range', '5d')
 
-    # period → yfinance period string; interval → candle size
-    period_map   = {'1d':'1d','5d':'5d','1mo':'1mo','3mo':'3mo','6mo':'6mo','1y':'1y'}
-    interval_map = {'1d':'5m', '5d':'30m','1mo':'1h','3mo':'1d','6mo':'1d','1y':'1wk'}
-    period   = period_map.get(rng, '1mo')
+    # Per-range TTL: intraday expires quickly; daily/weekly bars live longer
+    ttl_map      = {'5d': 300, '1mo': 1800, '3mo': 3600, '6mo': 86400, '1y': 86400}
+    interval_map = {'5d': '30m', '1mo': '1h', '3mo': '1d', '6mo': '1d', '1y': '1wk'}
     interval = interval_map.get(rng, '1d')
-    try:
-        h = yf.Ticker(sym).history(period=period, interval=interval)
-        bars = []
-        for ts, row in h.iterrows():
-            close = row.get('Close')
-            if close is None or (isinstance(close, float) and math.isnan(close)):
-                continue
-            t = int(ts.timestamp()) if hasattr(ts, 'timestamp') else int(ts.value // 1e9)
-            def _fv(k):
-                v = row.get(k)
-                return round(float(v), 2) if v is not None and not (isinstance(v, float) and math.isnan(v)) else round(float(close), 2)
-            bars.append({
-                'time':  t,
-                'open':  _fv('Open'),
-                'high':  _fv('High'),
-                'low':   _fv('Low'),
-                'close': round(float(close), 2),
-                'value': round(float(close), 2),   # keep for line-series fallback
-            })
-        result = {'bars': bars, 'interval': interval, '_ts': time.time()}
-        rset(cache_key, result, ttl=300)
-        return jsonify({'bars': bars, 'interval': interval})
-    except Exception as e:
-        return jsonify({'bars': [], 'error': str(e)}), 500
+    ttl      = ttl_map.get(rng, 3600)
+
+    cache_key = f'tase:idxhist:{sym}:{rng}'
+
+    # ── 1. Serve from cache if still fresh ────────────────────────────────
+    cached = rget(cache_key)
+    if cached and cached.get('bars') and cached.get('_ts'):
+        age = time.time() - cached['_ts']
+        if age < ttl:
+            return jsonify({'bars': cached['bars'], 'interval': cached.get('interval', interval)})
+
+    # ── 2. Fast path: direct Yahoo Finance v8 API (~300ms vs 3-8s yfinance) ─
+    bars = _fetch_chart_v8(sym, rng, interval)
+
+    # ── 3. Fallback: yfinance wrapper (slower but more reliable for edge cases)
+    if not bars:
+        try:
+            period_map = {'5d': '5d', '1mo': '1mo', '3mo': '3mo', '6mo': '6mo', '1y': '1y'}
+            h = yf.Ticker(sym).history(period=period_map.get(rng, '1mo'), interval=interval)
+            bars = []
+            for ts, row in h.iterrows():
+                close = row.get('Close')
+                if close is None or (isinstance(close, float) and math.isnan(close)):
+                    continue
+                t = int(ts.timestamp()) if hasattr(ts, 'timestamp') else int(ts.value // 1e9)
+                def _fv(k, _c=close):
+                    v = row.get(k)
+                    return round(float(v), 2) if v is not None and not (isinstance(v, float) and math.isnan(v)) else round(float(_c), 2)
+                bars.append({'time': t, 'open': _fv('Open'), 'high': _fv('High'),
+                             'low': _fv('Low'), 'close': round(float(close), 2),
+                             'value': round(float(close), 2)})
+        except Exception as e:
+            # Return stale cache if available rather than empty
+            if cached and cached.get('bars'):
+                return jsonify({'bars': cached['bars'], 'interval': interval, 'stale': True})
+            return jsonify({'bars': [], 'error': str(e)}), 500
+
+    if bars:
+        rset(cache_key, {'bars': bars, 'interval': interval, '_ts': time.time()}, ttl=ttl)
+    return jsonify({'bars': bars or [], 'interval': interval})
 
 
 @app.route('/stock/<ticker>')
@@ -750,13 +832,15 @@ def dcf_page():
 def bonds_api():
     """
     Return TASE corporate bonds enriched with issuer financial data.
-    Bond data comes from the worker's tase:bonds Redis key.
-    Issuer data is joined from the stock cache + enrichment.
+    If bond cache is cold, triggers a background fetch and returns fetching=True
+    so the frontend can poll again in ~60 seconds.
     """
     cached = rget('tase:bonds')
     if not cached or not cached.get('data'):
-        return jsonify({'bonds': [], 'timestamp': 0,
-                        'error': 'Bond data not yet fetched. Worker must run first.'})
+        # Kick off a background fetch so the next request (after ~60s) will have data
+        threading.Thread(target=_background_bond_refresh, daemon=True).start()
+        return jsonify({'bonds': [], 'timestamp': 0, 'fetching': True,
+                        'message': 'Fetching bond data… this takes ~60 seconds on first load. Refresh the tab shortly.'})
 
     bonds = cached.get('data', [])
     ts    = cached.get('timestamp', 0)

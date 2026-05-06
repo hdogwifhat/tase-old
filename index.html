@@ -2473,17 +2473,44 @@ let _bondSort = { col: 'market_value', asc: false };
 let _bondFilter = { text: '', sector: '', price: '' };
 
 async function _loadBondHub() {
+  const el = document.getElementById('bond-hub-content');
   try {
     const d = await fetch('/api/bonds').then(r => r.json());
     _bondData = d.bonds || [];
-    if (d.error && !_bondData.length) {
-      document.getElementById('bond-hub-content').innerHTML =
-        `<div style="padding:20px;color:var(--text3)">${d.error}</div>`;
+
+    if (d.fetching && !_bondData.length) {
+      // Backend triggered a background fetch — show countdown and auto-retry
+      let secs = 65;
+      el.innerHTML = `
+        <div style="padding:28px 20px;text-align:center">
+          <div style="font-size:28px;margin-bottom:10px">⏳</div>
+          <div style="font-size:14px;color:var(--text);font-weight:600;margin-bottom:6px">Fetching bond data from TASE…</div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:16px">
+            First load fetches all ~250 TASE bond instruments. Takes about 60 seconds.<br>
+            The page will refresh automatically.
+          </div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:22px;color:var(--amber)" id="bond-countdown">${secs}s</div>
+        </div>`;
+      const timer = setInterval(() => {
+        secs--;
+        const cd = document.getElementById('bond-countdown');
+        if (cd) cd.textContent = secs + 's';
+        if (secs <= 0) {
+          clearInterval(timer);
+          el.innerHTML = '<div style="padding:20px;color:var(--text3);font-size:13px">Retrying…</div>';
+          _loadBondHub();
+        }
+      }, 1000);
+      return;
+    }
+
+    if (!_bondData.length) {
+      el.innerHTML = `<div style="padding:20px;color:var(--text3)">${d.message || 'No bond data available.'}</div>`;
       return;
     }
     _renderBondHub();
   } catch(e) {
-    document.getElementById('bond-hub-content').innerHTML =
+    if (el) el.innerHTML =
       `<div style="padding:20px;color:var(--red);font-size:12px">Error loading bond data: ${e.message}</div>`;
   }
 }
