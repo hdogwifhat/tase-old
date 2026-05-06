@@ -284,8 +284,6 @@ def prefetch_index_charts():
 def run_full(enrich=True):
     print(f'[Worker] === Full run at {time.strftime("%Y-%m-%d %H:%M:%S")} ===', flush=True)
     stocks = run_fetch()
-    prefetch_index_charts()   # pre-warm chart cache on every full run
-    fetch_bonds()             # refresh bond data
     if enrich:
         run_enrichment(stocks)
 
