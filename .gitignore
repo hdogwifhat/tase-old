@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 .claude/
 detail_cache/
+tase_cache.json
+enrich_cache.json
