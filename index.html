@@ -2741,32 +2741,37 @@ function setEnrichBadge(on) { document.getElementById('enrich-badge').classList.
 // ═══════════════════════════════════════════════════════════════════════
 function startPoll(onDone) {
   if (pollTimer) return;
-  let pct = 10;
+  let pct = 10, elapsed = 0;
+  const MAX_WAIT = 180; // 3 minutes then show retry button
+
   pollTimer = setInterval(async () => {
+    elapsed++;
     try {
       const d = await (await fetch('/api/status')).json();
-      if (d.progress?.total > 0) {
-        pct = Math.round(d.progress.done / d.progress.total * 90) + 5;
-      } else {
-        pct = Math.min(pct + 5, 85);
-      }
+      pct = Math.min(pct + 2, 90);
       showBar(pct);
-      if (!d.fetching && d.stock_count > 0) {
+
+      if (d.stock_count > 0) {
+        clearInterval(pollTimer); pollTimer = null;
+        hideBar(); onDone(); return;
+      }
+
+      // After 3 min with no data, stop spinning and show retry
+      if (elapsed >= MAX_WAIT) {
         clearInterval(pollTimer); pollTimer = null;
         hideBar();
-        onDone();
-      } else if (!d.fetching && d.error) {
-        clearInterval(pollTimer); pollTimer = null;
-        hideBar();
-        document.getElementById('load-text').textContent = 'Failed to fetch data';
-        document.getElementById('load-hint').textContent = `Error: ${d.error}`;
+        document.getElementById('load-text').textContent = 'Taking longer than expected';
+        document.getElementById('load-hint').textContent = 'The data worker may be starting up. Click Retry to check again.';
         document.getElementById('load-hint').style.display = '';
-        document.getElementById('load-hint').style.color = 'var(--red)';
-        const btn = document.createElement('button');
-        btn.textContent = 'Retry';
-        btn.style.cssText = 'margin-top:12px;padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px';
-        btn.onclick = () => { document.getElementById('overlay').querySelector('button')?.remove(); loadData(true); };
-        document.getElementById('overlay').appendChild(btn);
+        document.getElementById('load-hint').style.color = 'var(--text2)';
+        const existing = document.getElementById('overlay').querySelector('button');
+        if (!existing) {
+          const btn = document.createElement('button');
+          btn.textContent = '↻ Retry';
+          btn.style.cssText = 'margin-top:12px;padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px';
+          btn.onclick = () => { btn.remove(); loadData(true); };
+          document.getElementById('overlay').appendChild(btn);
+        }
       }
     } catch {}
   }, 1000);

@@ -29,7 +29,7 @@ import yfinance as yf
 from yfinance import EquityQuery, screen
 from redis_client import rget, rset, acquire_lock, release_lock
 
-STOCK_TTL  = 1800    # 30 min
+STOCK_TTL  = 7200    # 2 hr — must be > off-hours refresh interval (60 min)
 ENRICH_TTL = 86400   # 24 hr
 
 # Bonds and warrants — filtered OUT of the equity screener

@@ -168,22 +168,65 @@ def _background_bond_refresh():
 
 
 def _background_refresh():
-    """Fetch fresh stock data in a background thread and write to Redis/file."""
+    """
+    Fetch fresh stock data in a background thread — self-contained, no worker import.
+    Uses yfinance EquityQuery directly so it works even if the worker service is down.
+    """
     if not _refresh_lock.acquire(blocking=False):
         return
     try:
-        import sys
-        sys.path.insert(0, BASE_DIR)
-        from worker import fetch_stocks, STOCK_TTL
-        stocks = fetch_stocks()
+        print('[App] Background stock refresh starting…', flush=True)
+        import yfinance as _yf
+        from yfinance import EquityQuery as _EQ, screen as _screen
+        import re as _re2
+
+        _bond_pat = _re2.compile(r'-B\d|-P\d|-C\d|-M\d')
+
+        def _pq(s):
+            sym = s.get('symbol', '')
+            raw = s.get('regularMarketPrice')
+            if not sym or not raw or raw <= 0 or _bond_pat.search(sym):
+                return None
+            div = s.get('currency', '') == 'ILA'
+            price = round(raw / 100, 2) if div else round(raw, 2)
+            chg   = s.get('regularMarketChangePercent')
+            mc    = s.get('marketCap')
+            h52   = s.get('fiftyTwoWeekHigh')
+            l52   = s.get('fiftyTwoWeekLow')
+            return {
+                'ticker':      sym.replace('.TA', ''),
+                'name':        s.get('longName') or s.get('shortName') or sym,
+                'price':       price,
+                'change_pct':  round(chg, 2) if chg is not None else None,
+                'market_cap':  int(mc) if mc else None,
+                'pe':          round(s.get('trailingPE'), 1) if s.get('trailingPE') and 0 < s.get('trailingPE') < 10000 else None,
+                'eps':         round(s.get('epsTrailingTwelveMonths'), 2) if s.get('epsTrailingTwelveMonths') is not None else None,
+                'volume':      int(s.get('regularMarketVolume')) if s.get('regularMarketVolume') else None,
+                'week52_high': round(h52 / 100, 2) if (div and h52) else h52,
+                'week52_low':  round(l52 / 100, 2) if (div and l52) else l52,
+                'div_yield':   round(s.get('trailingAnnualDividendRate', 0) / price * 100, 2) if price else None,
+                'adv_ils':     None, 'sector': '',
+            }
+
+        q = _EQ('eq', ['exchange', 'TLV'])
+        all_q, offset = [], 0
+        while True:
+            res    = _screen(q, sortField='intradaymarketcap', sortAsc=False, offset=offset, size=100)
+            quotes = res.get('quotes', [])
+            if not quotes: break
+            all_q.extend(quotes)
+            offset += 100
+            if offset >= res.get('total', 0): break
+
+        stocks = sorted([p for p in (_pq(s) for s in all_q) if p],
+                        key=lambda x: x.get('market_cap') or 0, reverse=True)
         if stocks:
-            payload = {'data': stocks, 'timestamp': time.time()}
-            rset('tase:stocks', payload, ttl=STOCK_TTL)
-            with open(CACHE_FILE, 'w', encoding='utf-8') as f:
-                json.dump(payload, f)
-            print('[App] Background refresh complete.', flush=True)
+            rset('tase:stocks', {'data': stocks, 'timestamp': time.time()}, ttl=7200)
+            rset('tase:fetch_error', None)
+            print(f'[App] Background refresh done — {len(stocks)} stocks.', flush=True)
     except Exception as e:
         print(f'[App] Background refresh error: {e}', flush=True)
+        rset('tase:fetch_error', str(e))
     finally:
         _refresh_lock.release()
 
@@ -658,9 +701,12 @@ def stocks():
     error = rget('tase:fetch_error')
 
     if not data:
-        msg = error or ('No data yet. Run: python worker.py --once' if is_available()
-                        else 'No data yet. Cache files not found.')
-        return jsonify({'data': [], 'fetching': False, 'first_run': True, 'error': msg})
+        # No data at all — trigger a background fetch from the web process itself
+        # so the app doesn't depend solely on the worker service being alive.
+        if not _refresh_lock.locked():
+            threading.Thread(target=_background_refresh, daemon=True).start()
+        msg = error or 'Fetching live data… ready in about 60 seconds.'
+        return jsonify({'data': [], 'fetching': True, 'first_run': True, 'error': msg})
 
     age     = time.time() - ts if ts else None
     ttl_val = rttl('tase:stocks')
