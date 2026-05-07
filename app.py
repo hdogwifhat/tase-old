@@ -21,6 +21,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 _refresh_lock = threading.Lock()
 _bond_lock    = threading.Lock()
+_APP_START    = time.time()   # used to delay bond fetch until worker is settled
 import re as _re_app
 
 # ── Direct Yahoo Finance v8 chart API (10-20× faster than yfinance wrapper) ──
@@ -91,6 +92,10 @@ def _background_bond_refresh():
         print('[App] Bond fetch already running — skipped.', flush=True)
         return
     try:
+        # Wait 2 min after any app start so the worker's stock fetch completes first
+        uptime = time.time() - _APP_START
+        if uptime < 120:
+            time.sleep(120 - uptime)
         print('[App] Bond fetch starting…', flush=True)
         from yfinance import EquityQuery, screen as yf_screen
 
@@ -152,15 +157,9 @@ def _background_bond_refresh():
         _bond_lock.release()
 
 
-def _startup_bond_fetch():
-    """Trigger bond fetch 10s after startup if cache is cold."""
-    time.sleep(10)
-    cached = rget('tase:bonds')
-    if not cached or not cached.get('data'):
-        _background_bond_refresh()
-
-# Kick off bond pre-load on app startup (non-blocking)
-threading.Thread(target=_startup_bond_fetch, daemon=True).start()
+# Bond data is fetched on-demand when the user opens the Bonds tab.
+# No startup pre-fetch — avoids concurrent EquityQuery calls that
+# rate-limit the worker's stock fetch on Render deployment.
 
 
 def _background_refresh():
