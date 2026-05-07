@@ -88,14 +88,16 @@ def _background_bond_refresh():
     Bonds are priced in ILA; raw ILA value = % of par (100 ILA = 1 ILS = par).
     Stores enriched bond list in Redis under tase:bonds (1hr TTL).
     """
+    # Use Redis distributed lock so only ONE fetch runs across all gunicorn workers
+    from redis_client import acquire_lock as _acquire, release_lock as _release
+    if not _acquire('bond_fetch', ttl=300):
+        print('[App] Bond fetch lock held (Redis) — skipped.', flush=True)
+        _bond_lock.release() if _bond_lock.locked() else None
+        return
     if not _bond_lock.acquire(blocking=False):
-        print('[App] Bond fetch already running — skipped.', flush=True)
+        _release('bond_fetch')
         return
     try:
-        # Wait 2 min after any app start so the worker's stock fetch completes first
-        uptime = time.time() - _APP_START
-        if uptime < 120:
-            time.sleep(120 - uptime)
         print('[App] Bond fetch starting…', flush=True)
         from yfinance import EquityQuery, screen as yf_screen
 
@@ -154,7 +156,10 @@ def _background_bond_refresh():
     except Exception as e:
         print(f'[App] Bond fetch error: {e}', flush=True)
     finally:
-        _bond_lock.release()
+        try: _bond_lock.release()
+        except RuntimeError: pass
+        try: _release('bond_fetch')
+        except Exception: pass
 
 
 # Bond data is fetched on-demand when the user opens the Bonds tab.
@@ -905,11 +910,12 @@ def bonds_api():
     If bond cache is cold, triggers a background fetch and returns fetching=True
     so the frontend can poll again in ~60 seconds.
     """
-    cached    = rget('tase:bonds')
-    has_data  = cached and isinstance(cached.get('data'), list) and len(cached['data']) > 0
-    is_active = _bond_lock.locked()   # fetch already running?
+    cached   = rget('tase:bonds')
+    has_data = cached and isinstance(cached.get('data'), list) and len(cached['data']) > 0
+    # Redis lock tells us if ANY gunicorn worker is already fetching
+    lock_held = bool(rget('lock:bond_fetch'))
 
-    if not has_data and not is_active:
+    if not has_data and not lock_held:
         threading.Thread(target=_background_bond_refresh, daemon=True).start()
     if not has_data:
         return jsonify({'bonds': [], 'timestamp': 0, 'fetching': True,
