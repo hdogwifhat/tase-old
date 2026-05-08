@@ -307,6 +307,8 @@ def _background_refresh():
                 'industry':    s.get('industry') or '',
             }
 
+        _corp_bond_re = _re2.compile(r'^([A-Z0-9]+)-B(\d+)\.TA$')
+
         q = _EQ('eq', ['exchange', 'TLV'])
         all_q, offset = [], 0
         while True:
@@ -324,26 +326,63 @@ def _background_refresh():
             if offset >= res.get('total', 0):
                 break
 
-        stocks = sorted([p for p in (_pq(s) for s in all_q) if p],
-                        key=lambda x: x.get('market_cap') or 0, reverse=True)
+        # ── Separate stocks and bonds from the same EquityQuery ──────────
+        # Eliminates the duplicate bond EquityQuery that was causing rate limits.
+        stocks, bond_list = [], []
+        for _s in all_q:
+            _sym = _s.get('symbol', '')
+            _raw = _s.get('regularMarketPrice')
+            if not _raw or _raw <= 0:
+                continue
+            _bm = _corp_bond_re.match(_sym)
+            if _bm:
+                # Corporate bond: price in ILA = % of par
+                _chg  = _s.get('regularMarketChangePercent')
+                _vol  = _s.get('regularMarketVolume')
+                _mc   = _s.get('marketCap')
+                _h52  = _s.get('fiftyTwoWeekHigh')
+                _l52  = _s.get('fiftyTwoWeekLow')
+                bond_list.append({
+                    'symbol':       _sym.replace('.TA', ''),
+                    'issuer':       _bm.group(1),
+                    'series':       f'B{_bm.group(2)}',
+                    'series_num':   int(_bm.group(2)),
+                    'price_pct':    round(float(_raw), 2),
+                    'change_pct':   round(float(_chg), 2) if _chg is not None else None,
+                    'volume':       int(_vol)  if _vol  else 0,
+                    'market_value': int(_mc)   if _mc   else 0,
+                    'high52_pct':   round(float(_h52), 2) if _h52 else None,
+                    'low52_pct':    round(float(_l52),  2) if _l52 else None,
+                })
+            elif not _bond_pat.search(_sym):
+                p = _pq(_s)
+                if p:
+                    stocks.append(p)
+
+        stocks.sort(key=lambda x: x.get('market_cap') or 0, reverse=True)
+        bond_list.sort(key=lambda x: x.get('market_value') or 0, reverse=True)
+
+        now_ts = time.time()
         if stocks:
-            payload = {'data': stocks, 'timestamp': time.time()}
+            payload = {'data': stocks, 'timestamp': now_ts}
             rset('tase:stocks', payload, ttl=7200)
             rset('tase:fetch_error', None)
             rset('tase:fetch_error_ts', None)
-            # File fallback: persist to disk when Redis is unavailable
             if not is_available():
                 _cache_path = os.path.join(BASE_DIR, 'tase_cache.json')
                 try:
                     with open(_cache_path, 'w', encoding='utf-8') as _f:
                         json.dump(payload, _f)
-                    print('[App] Wrote tase_cache.json (Redis unavailable).', flush=True)
-                except Exception as _fe:
-                    print(f'[App] File cache write error: {_fe}', flush=True)
-            print(f'[App] Background refresh done — {len(stocks)} stocks.', flush=True)
+                except Exception:
+                    pass
+            print(f'[App] Refresh done — {len(stocks)} stocks, {len(bond_list)} bonds.',
+                  flush=True)
         else:
             rset('tase:fetch_error', 'No data returned from Yahoo Finance')
-            rset('tase:fetch_error_ts', time.time())
+            rset('tase:fetch_error_ts', now_ts)
+
+        if bond_list:
+            rset('tase:bonds', {'data': bond_list, 'timestamp': now_ts}, ttl=7200)
     except Exception as e:
         _emsg = str(e)
         print(f'[App] Background refresh error: {_emsg}', flush=True)
@@ -1125,11 +1164,14 @@ def bonds_api():
     # Redis lock tells us if ANY gunicorn worker is already fetching
     lock_held = bool(rget('lock:bond_fetch'))
 
-    if not has_data and not lock_held:
-        threading.Thread(target=_background_bond_refresh, daemon=True).start()
     if not has_data:
-        return jsonify({'bonds': [], 'timestamp': 0, 'fetching': True,
-                        'message': 'Fetching TASE bond data… ~60 s on first load.'})
+        # Bonds now come from the stock refresh (no separate bond EquityQuery needed).
+        # If stocks are already loaded, trigger a stock refresh to populate bonds too.
+        stocks_cached = rget('tase:stocks')
+        if not stocks_cached and not _refresh_lock.locked():
+            threading.Thread(target=_background_refresh, daemon=True).start()
+        return jsonify({'data': [], 'bonds': [], 'timestamp': 0, 'fetching': True,
+                        'message': 'Bond data populates automatically with stock refresh (~90 s).'})
 
     bonds = cached.get('data', [])
     ts    = cached.get('timestamp', 0)
