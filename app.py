@@ -169,14 +169,24 @@ def _background_bond_refresh():
 
 def _background_refresh():
     """
-    Fetch fresh stock data in a background thread — self-contained, no worker import.
-    Uses yfinance EquityQuery directly so it works even if the worker service is down.
+    Fetch the TOP 100 TASE stocks as fast seed data (single HTTP request, ~5-10s).
+    Full 800+ stock dataset is populated by the dedicated worker service.
+    This just unblocks the UI on first load if the worker hasn't run yet.
     """
     if not _refresh_lock.acquire(blocking=False):
         return
+    # Don't compete with the worker — if its fetch lock is already held in Redis,
+    # the worker is actively fetching; we just wait for it to finish.
     try:
-        print('[App] Background stock refresh starting…', flush=True)
-        import yfinance as _yf
+        worker_running = bool(rget('lock:fetch'))
+    except Exception:
+        worker_running = False
+    if worker_running:
+        print('[App] Worker fetch lock held — skipping background refresh.', flush=True)
+        _refresh_lock.release()
+        return
+    try:
+        print('[App] Background stock seed starting (top 100)…', flush=True)
         from yfinance import EquityQuery as _EQ, screen as _screen
         import re as _re2
 
@@ -187,43 +197,45 @@ def _background_refresh():
             raw = s.get('regularMarketPrice')
             if not sym or not raw or raw <= 0 or _bond_pat.search(sym):
                 return None
-            div = s.get('currency', '') == 'ILA'
+            div   = s.get('currency', '') == 'ILA'
             price = round(raw / 100, 2) if div else round(raw, 2)
             chg   = s.get('regularMarketChangePercent')
             mc    = s.get('marketCap')
             h52   = s.get('fiftyTwoWeekHigh')
             l52   = s.get('fiftyTwoWeekLow')
+            pe    = s.get('trailingPE')
+            eps   = s.get('epsTrailingTwelveMonths')
+            vol   = s.get('regularMarketVolume')
+            div_r = s.get('trailingAnnualDividendRate')
             return {
                 'ticker':      sym.replace('.TA', ''),
                 'name':        s.get('longName') or s.get('shortName') or sym,
                 'price':       price,
                 'change_pct':  round(chg, 2) if chg is not None else None,
                 'market_cap':  int(mc) if mc else None,
-                'pe':          round(s.get('trailingPE'), 1) if s.get('trailingPE') and 0 < s.get('trailingPE') < 10000 else None,
-                'eps':         round(s.get('epsTrailingTwelveMonths'), 2) if s.get('epsTrailingTwelveMonths') is not None else None,
-                'volume':      int(s.get('regularMarketVolume')) if s.get('regularMarketVolume') else None,
+                'pe':          round(pe, 1) if pe and 0 < pe < 10000 else None,
+                'eps':         round(eps, 2) if eps is not None else None,
+                'volume':      int(vol) if vol else None,
                 'week52_high': round(h52 / 100, 2) if (div and h52) else h52,
                 'week52_low':  round(l52 / 100, 2) if (div and l52) else l52,
-                'div_yield':   round(s.get('trailingAnnualDividendRate', 0) / price * 100, 2) if price else None,
+                'div_yield':   round(div_r / price * 100, 2) if (div_r and price) else None,
                 'adv_ils':     None, 'sector': '',
             }
 
         q = _EQ('eq', ['exchange', 'TLV'])
-        all_q, offset = [], 0
-        while True:
-            res    = _screen(q, sortField='intradaymarketcap', sortAsc=False, offset=offset, size=100)
-            quotes = res.get('quotes', [])
-            if not quotes: break
-            all_q.extend(quotes)
-            offset += 100
-            if offset >= res.get('total', 0): break
+        # Single page only — top 100 by market cap.  Fast (~5-10s vs 60-120s full).
+        # The worker service fetches the complete universe; this just seeds the UI.
+        res    = _screen(q, sortField='intradaymarketcap', sortAsc=False, offset=0, size=100)
+        quotes = res.get('quotes', [])
 
-        stocks = sorted([p for p in (_pq(s) for s in all_q) if p],
+        stocks = sorted([p for p in (_pq(s) for s in quotes) if p],
                         key=lambda x: x.get('market_cap') or 0, reverse=True)
         if stocks:
             rset('tase:stocks', {'data': stocks, 'timestamp': time.time()}, ttl=7200)
             rset('tase:fetch_error', None)
-            print(f'[App] Background refresh done — {len(stocks)} stocks.', flush=True)
+            print(f'[App] Background seed done — {len(stocks)} stocks (top 100).', flush=True)
+        else:
+            rset('tase:fetch_error', 'No data returned from Yahoo Finance')
     except Exception as e:
         print(f'[App] Background refresh error: {e}', flush=True)
         rset('tase:fetch_error', str(e))
@@ -751,6 +763,27 @@ def status():
         'error':       rget('tase:fetch_error'),
         'redis':       is_available(),
         'progress':    {'done': 0, 'total': 0},
+    })
+
+
+@app.route('/api/health')
+def health():
+    """Lightweight liveness probe — always responds quickly."""
+    data, ts = _stocks_from_redis_or_file()
+    age = round(time.time() - ts) if ts else None
+    uptime = round(time.time() - _APP_START)
+    return jsonify({
+        'ok':            True,
+        'uptime_s':      uptime,
+        'redis':         is_available(),
+        'stock_count':   len(data) if data else 0,
+        'cache_age_s':   age,
+        'worker_lock':   bool(rget('lock:fetch')),
+        'bond_lock':     bool(rget('lock:bond_fetch')),
+        'enrich_lock':   bool(rget('lock:enrich')),
+        'fetch_error':   rget('tase:fetch_error'),
+        'refresh_busy':  _refresh_lock.locked(),
+        'bond_busy':     _bond_lock.locked(),
     })
 
 
