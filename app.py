@@ -46,6 +46,17 @@ def _scheduler():
     time.sleep(20)       # let gunicorn finish binding before we start work
     print('[Scheduler] Started.', flush=True)
 
+    # If Redis already has fresh stocks from a previous deploy, don't re-fetch
+    # immediately — that causes rapid duplicate fetches and Yahoo Finance rate limits.
+    try:
+        _existing = rget('tase:stocks')
+        if _existing and _existing.get('timestamp'):
+            _last_fetch = float(_existing['timestamp'])
+            print(f'[Scheduler] Found existing stock data — next refresh in schedule.',
+                  flush=True)
+    except Exception:
+        pass
+
     while True:
         try:
             now      = time.time()
@@ -56,9 +67,12 @@ def _scheduler():
                 _last_fetch = now
                 threading.Thread(target=_background_refresh, daemon=True).start()
 
-            # ── Daily enrichment (runs ~1 min after first successful fetch) ─
-            stocks_ready = bool(rget('tase:stocks'))
-            if stocks_ready and (now - _last_enrich) >= 86400:
+            # ── Daily enrichment (sector + fundamentals via FMP) ─────────
+            enrich_cached = rget('tase:enrich')
+            stocks_ready  = bool(rget('tase:stocks'))
+            enrich_age    = (now - float((enrich_cached or {}).get('timestamp', 0))
+                             if enrich_cached else 999999)
+            if stocks_ready and enrich_age >= 86400 and not rget('lock:enrich'):
                 _last_enrich = now
                 def _run_enrich():
                     from redis_client import acquire_lock as _acq, release_lock as _rel
@@ -69,13 +83,47 @@ def _scheduler():
                         stocks = (cached or {}).get('data', [])
                         if not stocks:
                             return
-                        from enrichment import build_enrichment
-                        # Limit to top 100 to stay within FMP free-tier (250 req/day)
-                        enrich = build_enrichment(stocks[:100])
-                        rset('tase:enrich', {'data': enrich, 'timestamp': time.time()},
-                             ttl=86400)
-                        print(f'[Scheduler] Enrichment done — {len(enrich)} tickers.',
-                              flush=True)
+                        # ── Phase 1: fast yfinance sector tag (free, no API limit) ──
+                        _yf_enrich = {}
+                        try:
+                            import yfinance as _yf2
+                            for _st in stocks[:200]:
+                                try:
+                                    _info = _yf2.Ticker(_st['ticker'] + '.TA').info
+                                    _yf_enrich[_st['ticker']] = {
+                                        'sector':   _info.get('sector', '') or '',
+                                        'industry': _info.get('industry', '') or '',
+                                    }
+                                except Exception:
+                                    pass
+                            if _yf_enrich:
+                                # Merge into enrich cache immediately so heatmap works
+                                _ex = (rget('tase:enrich') or {}).get('data', {}) or {}
+                                for _tk, _v in _yf_enrich.items():
+                                    _ex.setdefault(_tk, {}).update(_v)
+                                rset('tase:enrich', {'data': _ex, 'timestamp': now}, ttl=86400)
+                                print(f'[Scheduler] yfinance sectors: {len(_yf_enrich)} tickers.',
+                                      flush=True)
+                        except Exception as _ye:
+                            print(f'[Scheduler] yfinance sector error: {_ye}', flush=True)
+
+                        # ── Phase 2: FMP deep fundamentals ───────────────────────
+                        try:
+                            from enrichment import build_enrichment
+                            enrich = build_enrichment(stocks[:100])
+                            # Merge yfinance sectors into FMP result (FMP may lack some)
+                            for _tk, _v in _yf_enrich.items():
+                                enrich.setdefault(_tk, {})
+                                if not enrich[_tk].get('sector'):
+                                    enrich[_tk]['sector']   = _v.get('sector', '')
+                                if not enrich[_tk].get('industry'):
+                                    enrich[_tk]['industry'] = _v.get('industry', '')
+                            rset('tase:enrich', {'data': enrich, 'timestamp': time.time()},
+                                 ttl=86400)
+                            print(f'[Scheduler] Full enrichment done — {len(enrich)} tickers.',
+                                  flush=True)
+                        except Exception as _fe:
+                            print(f'[Scheduler] FMP enrichment error: {_fe}', flush=True)
                     except Exception as _ee:
                         print(f'[Scheduler] Enrichment error: {_ee}', flush=True)
                     finally:
@@ -249,7 +297,7 @@ def _background_refresh():
     try:
         _err     = rget('tase:fetch_error') or ''
         _err_ts  = float(rget('tase:fetch_error_ts') or 0)
-        if 'rate' in str(_err).lower() and (time.time() - _err_ts) < 300:
+        if _err and _err_ts and (time.time() - _err_ts) < 300:
             print('[App] Rate-limit cooldown active — skipping refresh.', flush=True)
             _refresh_lock.release()
             return
@@ -586,10 +634,10 @@ def _fetch_news(bare_ticker, company_name=''):
 # ── TASE indices ──────────────────────────────────────────────────────────────
 
 _MAIN_INDICES = [
-    {'label': 'TA-35',  'sym': 'TA35.TA',     'tase_id': 142},
-    {'label': 'TA-125', 'sym': '195.TA',       'tase_id': 137},  # 195.TA = TA125-Value ETF; TA125.TA broken on Yahoo
-    {'label': 'TA-90',  'sym': 'TA90.TA',      'tase_id': 168},
-    {'label': 'SME-60', 'sym': 'MIDCAP50.TA',  'tase_id': 164},
+    {'label': 'TA-35',  'sym': 'TA35.TA',   'tase_id': 142},
+    {'label': 'TA-125', 'sym': 'TA125.TA',  'tase_id': 137},
+    {'label': 'TA-90',  'sym': 'TA90.TA',   'tase_id': 168},
+    {'label': 'SME-60', 'sym': 'SME60.TA',  'tase_id': 164},
 ]
 
 _SECTOR_INDICES_LABELS = [
@@ -865,7 +913,7 @@ def stocks():
         # Rate-limit cooldown check — don't trigger another fetch if we just failed
         try:
             _err_ts  = float(rget('tase:fetch_error_ts') or 0)
-            _in_cool = 'rate' in str(error or '').lower() and (time.time() - _err_ts) < 300
+            _in_cool = bool(error) and _err_ts and (time.time() - _err_ts) < 300
         except Exception:
             _in_cool = False
         if not _in_cool and not _refresh_lock.locked():
