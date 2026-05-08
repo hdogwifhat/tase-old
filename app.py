@@ -169,14 +169,29 @@ def _background_bond_refresh():
 
 def _background_refresh():
     """
-    Fetch the TOP 100 TASE stocks as fast seed data (single HTTP request, ~5-10s).
-    Full 800+ stock dataset is populated by the dedicated worker service.
-    This just unblocks the UI on first load if the worker hasn't run yet.
+    Fetch ALL TASE equities (~800 stocks) in a background thread.
+    Runs in a daemon thread so it never blocks HTTP request handling.
+    Takes 60-120s to complete; the frontend polls until data is ready.
+
+    Rate-limit protection: if the last fetch failed with a Yahoo Finance
+    rate-limit error, we wait 5 minutes before retrying automatically.
+    Use POST /api/refresh to bypass the cooldown and force an immediate retry.
     """
     if not _refresh_lock.acquire(blocking=False):
         return
-    # Don't compete with the worker — if its fetch lock is already held in Redis,
-    # the worker is actively fetching; we just wait for it to finish.
+    # ── Rate-limit cooldown ─────────────────────────────────────────────
+    # Don't hammer Yahoo Finance if we just got rate-limited.
+    try:
+        _err     = rget('tase:fetch_error') or ''
+        _err_ts  = float(rget('tase:fetch_error_ts') or 0)
+        if 'rate' in str(_err).lower() and (time.time() - _err_ts) < 300:
+            print('[App] Rate-limit cooldown active — skipping refresh.', flush=True)
+            _refresh_lock.release()
+            return
+    except Exception:
+        pass
+    # ── Worker lock check ───────────────────────────────────────────────
+    # If the dedicated worker service is currently fetching, let it finish.
     try:
         worker_running = bool(rget('lock:fetch'))
     except Exception:
@@ -186,11 +201,11 @@ def _background_refresh():
         _refresh_lock.release()
         return
     try:
-        print('[App] Background stock seed starting (top 100)…', flush=True)
+        print('[App] Background refresh starting (full universe)…', flush=True)
         from yfinance import EquityQuery as _EQ, screen as _screen
         import re as _re2
 
-        _bond_pat = _re2.compile(r'-B\d|-P\d|-C\d|-M\d')
+        _bond_pat = _re2.compile(r'-B\d|\.B\d|-P\d|\.P\d|-C\d|-M\d')
 
         def _pq(s):
             sym = s.get('symbol', '')
@@ -207,6 +222,7 @@ def _background_refresh():
             eps   = s.get('epsTrailingTwelveMonths')
             vol   = s.get('regularMarketVolume')
             div_r = s.get('trailingAnnualDividendRate')
+            avg_v = s.get('averageDailyVolume3Month') or s.get('averageDailyVolume10Day')
             return {
                 'ticker':      sym.replace('.TA', ''),
                 'name':        s.get('longName') or s.get('shortName') or sym,
@@ -219,23 +235,35 @@ def _background_refresh():
                 'week52_high': round(h52 / 100, 2) if (div and h52) else h52,
                 'week52_low':  round(l52 / 100, 2) if (div and l52) else l52,
                 'div_yield':   round(div_r / price * 100, 2) if (div_r and price) else None,
-                'adv_ils':     None, 'sector': '',
+                'adv_ils':     int(avg_v * price) if (avg_v and price) else None,
+                'sector':      '',
             }
 
         q = _EQ('eq', ['exchange', 'TLV'])
-        # Single page only — top 100 by market cap.  Fast (~5-10s vs 60-120s full).
-        # The worker service fetches the complete universe; this just seeds the UI.
-        res    = _screen(q, sortField='intradaymarketcap', sortAsc=False, offset=0, size=100)
-        quotes = res.get('quotes', [])
+        all_q, offset = [], 0
+        while True:
+            try:
+                res = _screen(q, sortField='intradaymarketcap', sortAsc=False,
+                              offset=offset, size=100)
+            except Exception as _page_err:
+                print(f'[App] Page error at offset {offset}: {_page_err}', flush=True)
+                break
+            quotes = res.get('quotes', [])
+            if not quotes:
+                break
+            all_q.extend(quotes)
+            offset += 100
+            if offset >= res.get('total', 0):
+                break
 
-        stocks = sorted([p for p in (_pq(s) for s in quotes) if p],
+        stocks = sorted([p for p in (_pq(s) for s in all_q) if p],
                         key=lambda x: x.get('market_cap') or 0, reverse=True)
         if stocks:
             payload = {'data': stocks, 'timestamp': time.time()}
             rset('tase:stocks', payload, ttl=7200)
             rset('tase:fetch_error', None)
-            # ── File fallback: persist to disk when Redis is unavailable ──
-            # Without this, rset is a no-op and stale file data is served forever.
+            rset('tase:fetch_error_ts', None)
+            # File fallback: persist to disk when Redis is unavailable
             if not is_available():
                 _cache_path = os.path.join(BASE_DIR, 'tase_cache.json')
                 try:
@@ -244,12 +272,15 @@ def _background_refresh():
                     print('[App] Wrote tase_cache.json (Redis unavailable).', flush=True)
                 except Exception as _fe:
                     print(f'[App] File cache write error: {_fe}', flush=True)
-            print(f'[App] Background seed done — {len(stocks)} stocks (top 100).', flush=True)
+            print(f'[App] Background refresh done — {len(stocks)} stocks.', flush=True)
         else:
             rset('tase:fetch_error', 'No data returned from Yahoo Finance')
+            rset('tase:fetch_error_ts', time.time())
     except Exception as e:
-        print(f'[App] Background refresh error: {e}', flush=True)
-        rset('tase:fetch_error', str(e))
+        _emsg = str(e)
+        print(f'[App] Background refresh error: {_emsg}', flush=True)
+        rset('tase:fetch_error', _emsg)
+        rset('tase:fetch_error_ts', time.time())
     finally:
         _refresh_lock.release()
 
@@ -724,12 +755,17 @@ def stocks():
     error = rget('tase:fetch_error')
 
     if not data:
-        # No data at all — trigger a background fetch from the web process itself
-        # so the app doesn't depend solely on the worker service being alive.
-        if not _refresh_lock.locked():
+        # Rate-limit cooldown check — don't trigger another fetch if we just failed
+        try:
+            _err_ts  = float(rget('tase:fetch_error_ts') or 0)
+            _in_cool = 'rate' in str(error or '').lower() and (time.time() - _err_ts) < 300
+        except Exception:
+            _in_cool = False
+        if not _in_cool and not _refresh_lock.locked():
             threading.Thread(target=_background_refresh, daemon=True).start()
-        msg = error or 'Fetching live data… ready in about 60 seconds.'
-        return jsonify({'data': [], 'fetching': True, 'first_run': True, 'error': msg})
+        msg = error or 'Fetching all TASE stocks… takes 60–90 s on first load.'
+        return jsonify({'data': [], 'fetching': True, 'first_run': True,
+                        'error': msg, 'cooldown': _in_cool})
 
     age = time.time() - ts if ts else None
 
@@ -764,12 +800,18 @@ def stocks():
 @app.route('/api/refresh', methods=['POST'])
 def refresh():
     """
-    Signals the worker to refresh. If a worker process is running it will
-    pick up the flag; otherwise returns instructions to run worker.py.
+    Clear any rate-limit error and immediately trigger a background refresh.
+    Bypasses the 5-minute cooldown so the user can force a retry at any time.
     """
+    rset('tase:fetch_error', None)
+    rset('tase:fetch_error_ts', None)
     rset('tase:refresh_requested', True, ttl=3600)
-    return jsonify({'status': 'refresh_requested',
-                    'message': 'Run `python worker.py --once` if no worker is running.'})
+    if not _refresh_lock.locked():
+        threading.Thread(target=_background_refresh, daemon=True).start()
+        return jsonify({'status': 'refresh_started',
+                        'message': 'Fetching all TASE stocks now — check back in 60-90 s.'})
+    return jsonify({'status': 'already_running',
+                    'message': 'A refresh is already in progress.'})
 
 
 @app.route('/api/status')
