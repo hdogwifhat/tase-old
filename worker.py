@@ -109,9 +109,21 @@ def run_fetch():
     try:
         stocks = fetch_stocks()
         if stocks:
-            rset('tase:stocks', {'data': stocks, 'timestamp': time.time()}, ttl=STOCK_TTL)
+            payload = {'data': stocks, 'timestamp': time.time()}
+            rset('tase:stocks', payload, ttl=STOCK_TTL)
             rset('tase:fetch_error', None)
             print('[Worker] Stocks stored in Redis.', flush=True)
+            # File fallback: write local cache when Redis is unavailable
+            from redis_client import is_available as _redis_ok
+            if not _redis_ok():
+                _cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tase_cache.json')
+                try:
+                    import json as _json
+                    with open(_cache, 'w', encoding='utf-8') as _f:
+                        _json.dump(payload, _f)
+                    print('[Worker] Wrote tase_cache.json (Redis unavailable).', flush=True)
+                except Exception as _fe:
+                    print(f'[Worker] File cache write error: {_fe}', flush=True)
             return stocks
         else:
             rset('tase:fetch_error', 'No data returned from Yahoo Finance')

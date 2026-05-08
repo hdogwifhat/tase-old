@@ -231,8 +231,19 @@ def _background_refresh():
         stocks = sorted([p for p in (_pq(s) for s in quotes) if p],
                         key=lambda x: x.get('market_cap') or 0, reverse=True)
         if stocks:
-            rset('tase:stocks', {'data': stocks, 'timestamp': time.time()}, ttl=7200)
+            payload = {'data': stocks, 'timestamp': time.time()}
+            rset('tase:stocks', payload, ttl=7200)
             rset('tase:fetch_error', None)
+            # ── File fallback: persist to disk when Redis is unavailable ──
+            # Without this, rset is a no-op and stale file data is served forever.
+            if not is_available():
+                _cache_path = os.path.join(BASE_DIR, 'tase_cache.json')
+                try:
+                    with open(_cache_path, 'w', encoding='utf-8') as _f:
+                        json.dump(payload, _f)
+                    print('[App] Wrote tase_cache.json (Redis unavailable).', flush=True)
+                except Exception as _fe:
+                    print(f'[App] File cache write error: {_fe}', flush=True)
             print(f'[App] Background seed done — {len(stocks)} stocks (top 100).', flush=True)
         else:
             rset('tase:fetch_error', 'No data returned from Yahoo Finance')
@@ -720,9 +731,19 @@ def stocks():
         msg = error or 'Fetching live data… ready in about 60 seconds.'
         return jsonify({'data': [], 'fetching': True, 'first_run': True, 'error': msg})
 
-    age     = time.time() - ts if ts else None
-    ttl_val = rttl('tase:stocks')
-    stale   = (ttl_val is not None and ttl_val < 60) or (age and age > 1800)
+    age = time.time() - ts if ts else None
+
+    # Staleness check:
+    # • Redis available  → use Redis TTL (< 60s remaining means stale)
+    # • Redis unavailable → use file age (> 30 min means stale)
+    # When Redis is down, rttl() returns -2 which is < 60, so without this
+    # guard the app would trigger a background refresh on every request but
+    # never persist the result, permanently looping on stale file data.
+    if is_available():
+        ttl_val = rttl('tase:stocks')
+        stale   = bool(ttl_val is not None and ttl_val < 60)
+    else:
+        stale   = bool(age and age > 1800)   # stale if file is > 30 min old
 
     if stale and not _refresh_lock.locked():
         threading.Thread(target=_background_refresh, daemon=True).start()
