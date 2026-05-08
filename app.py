@@ -21,8 +21,73 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 _refresh_lock = threading.Lock()
 _bond_lock    = threading.Lock()
-_APP_START    = time.time()   # used to delay bond fetch until worker is settled
+_APP_START    = time.time()
 import re as _re_app
+
+# ── In-process scheduler (replaces the paid Render Background Worker) ─────────
+# Runs stock fetch on market-hours schedule + daily enrichment, all inside the
+# web service process.  Uses Redis distributed lock so only one gunicorn worker
+# actually runs the work even if multiple workers are configured.
+
+def _scheduler():
+    import datetime as _dt
+
+    def _in_market_hours():
+        now = _dt.datetime.utcnow() + _dt.timedelta(hours=3)
+        if now.weekday() not in (0, 1, 2, 3, 6):   # Fri/Sat = 4/5
+            return False
+        op = now.replace(hour=9,  minute=30, second=0, microsecond=0)
+        cl = now.replace(hour=17, minute=30, second=0, microsecond=0)
+        return op <= now <= cl
+
+    _last_fetch  = 0.0
+    _last_enrich = 0.0   # 0 = run enrichment soon after first successful fetch
+
+    time.sleep(20)       # let gunicorn finish binding before we start work
+    print('[Scheduler] Started.', flush=True)
+
+    while True:
+        try:
+            now      = time.time()
+            interval = 300 if _in_market_hours() else 3600
+
+            # ── Stock refresh ────────────────────────────────────────────
+            if now - _last_fetch >= interval and not _refresh_lock.locked():
+                _last_fetch = now
+                threading.Thread(target=_background_refresh, daemon=True).start()
+
+            # ── Daily enrichment (runs ~1 min after first successful fetch) ─
+            stocks_ready = bool(rget('tase:stocks'))
+            if stocks_ready and (now - _last_enrich) >= 86400:
+                _last_enrich = now
+                def _run_enrich():
+                    from redis_client import acquire_lock as _acq, release_lock as _rel
+                    if not _acq('enrich', ttl=7200):
+                        return
+                    try:
+                        cached = rget('tase:stocks')
+                        stocks = (cached or {}).get('data', [])
+                        if not stocks:
+                            return
+                        from enrichment import build_enrichment
+                        # Limit to top 100 to stay within FMP free-tier (250 req/day)
+                        enrich = build_enrichment(stocks[:100])
+                        rset('tase:enrich', {'data': enrich, 'timestamp': time.time()},
+                             ttl=86400)
+                        print(f'[Scheduler] Enrichment done — {len(enrich)} tickers.',
+                              flush=True)
+                    except Exception as _ee:
+                        print(f'[Scheduler] Enrichment error: {_ee}', flush=True)
+                    finally:
+                        _rel('enrich')
+                threading.Thread(target=_run_enrich, daemon=True).start()
+
+        except Exception as _se:
+            print(f'[Scheduler] Error: {_se}', flush=True)
+
+        time.sleep(30)
+
+threading.Thread(target=_scheduler, daemon=True, name='tase-scheduler').start()
 
 # ── Direct Yahoo Finance v8 chart API (10-20× faster than yfinance wrapper) ──
 
@@ -236,7 +301,10 @@ def _background_refresh():
                 'week52_low':  round(l52 / 100, 2) if (div and l52) else l52,
                 'div_yield':   round(div_r / price * 100, 2) if (div_r and price) else None,
                 'adv_ils':     int(avg_v * price) if (avg_v and price) else None,
-                'sector':      '',
+                # yfinance screener results include sector/industry — use them directly
+                # so the heatmap works without waiting for enrichment to run.
+                'sector':      s.get('sector')   or '',
+                'industry':    s.get('industry') or '',
             }
 
         q = _EQ('eq', ['exchange', 'TLV'])

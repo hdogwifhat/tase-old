@@ -75,7 +75,8 @@ def _parse_quote(s):
         'week52_low':  low52,
         'div_yield':   div_yield,
         'adv_ils':     adv_ils,
-        'sector':      '',
+        'sector':      s.get('sector')   or '',
+        'industry':    s.get('industry') or '',
     }
 
 
