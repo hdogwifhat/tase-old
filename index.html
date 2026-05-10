@@ -482,6 +482,28 @@
     .sector-pill { font-size: 10.5px; color: #60a5fa; background: #001a33;
                     border: 1px solid #1e3a5f; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
 
+    /* ── Arbitrage badge ─────────────────────────────────────────────── */
+    /* arb_pct > 0 = TASE premium (buyer overpays vs US) — amber/red warn  */
+    /* arb_pct < 0 = TASE discount (buyer gets better deal) — green signal  */
+    .arb-hi      { color: #ef4444; font-weight: 700; }   /* >+2%: large premium   */
+    .arb-warn    { color: #f59e0b; font-weight: 600; }   /* +0.5–2%: mild premium  */
+    .arb-par     { color: var(--text3); }                /* ±0.5%: at parity       */
+    .arb-opp     { color: #4ade80; font-weight: 600; }   /* -0.5–-2%: discount     */
+    .arb-hi-opp  { color: #22c55e; font-weight: 700; }   /* <-2%: large discount   */
+
+    /* ── Bond YTM inputs ────────────────────────────────────────────── */
+    .bond-ytm-inp {
+      width: 46px; background: var(--bg2); border: 1px solid var(--border2);
+      border-radius: 2px; color: var(--text); font-family: 'JetBrains Mono', monospace;
+      font-size: 10px; padding: 1px 4px; text-align: right; outline: none;
+    }
+    .bond-ytm-inp:focus { border-color: var(--accent); }
+    .bond-ytm-inp::placeholder { color: var(--text3); font-size: 9px; }
+    .ytm-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 11px; }
+    .ytm-low  { color: #4ade80; }    /* <4%: investment grade-ish  */
+    .ytm-mid  { color: var(--amber); }  /* 4–8%: moderate yield     */
+    .ytm-high { color: #ef4444; }    /* >8%: high yield / stressed */
+
     /* Sparkline cell */
     .col-spark { width: 88px; }
     .spark-svg { overflow: visible; display: block; }
@@ -947,6 +969,7 @@
   <button class="pill" data-preset="fcf">FCF Value</button>
   <button class="pill" data-preset="liquid">Liquid</button>
   <button class="pill" data-preset="realestate">נדל"ן</button>
+  <button class="pill" data-preset="duallisted">Dual Listed ⇄</button>
 </div>
 
 <!-- ── Column visibility panel ──────────────────────────────────────────── -->
@@ -1177,6 +1200,8 @@ const COLUMNS = [
   { id:'ffo_yield',      label:'FFO Yld',      defaultOn:false },
   { id:'cap_rate_implied',label:'Cap Rate',    defaultOn:false },
   { id:'nav_discount',   label:'NAV Disc',     defaultOn:false },
+  // ── Dual-listing arbitrage (Task 2) ──
+  { id:'arb_pct',        label:'Arb %',        defaultOn:false },
   // ─────────────────────────────────────
   { id:'sector',         label:'Sector',       defaultOn:false },
   { id:'spark',          label:'1M',           defaultOn:true  },
@@ -1201,6 +1226,8 @@ const PILL_PRESETS = {
   'liquid':      { 'f-adv-min': 500, 'f-mcap-min': 1000 },
   // ── Phase 3: TASE RE preset ──────────
   'realestate':  { '_realestate': true },
+  // ── Dual-listed arbitrage preset ─────
+  'duallisted':  { '_duallisted': true },
 };
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1218,7 +1245,8 @@ let sortAsc      = false;
 let visibleCols  = new Set();
 let pollTimer    = null;
 let activePill   = '';
-let recentIpoFilter = false;
+let recentIpoFilter  = false;
+let dualListedFilter = false;
 let currentRows  = [];
 let focusMode    = 'home';
 
@@ -1527,6 +1555,20 @@ function renderCell(s, id) {
       return `<td><span class="${cls}">${sign}${v.toFixed(1)}%</span></td>`;
     }
     // ────────────────────────────────────────────────────────────────────
+    case 'arb_pct': {
+      const v = s.arb_pct;
+      if (v == null) return `<td style="color:var(--text3);font-size:10px">${s.us_ticker ? '…' : NA}</td>`;
+      const sign = v > 0 ? '+' : '';
+      const cls  = v >  2.0 ? 'arb-hi'
+                 : v >  0.5 ? 'arb-warn'
+                 : v < -2.0 ? 'arb-hi-opp'
+                 : v < -0.5 ? 'arb-opp'
+                 : 'arb-par';
+      const tip  = v > 0
+        ? `TASE ${v.toFixed(2)}% more expensive than ${s.us_ticker} on US exchange`
+        : `TASE ${Math.abs(v).toFixed(2)}% cheaper than ${s.us_ticker} on US exchange`;
+      return `<td title="${tip}"><span class="${cls}">${sign}${v.toFixed(2)}%</span></td>`;
+    }
     case 'sector':
       return `<td class="col-sector">${s.sector?`<span class="sector-pill">${s.sector}</span>`:NA}</td>`;
     case 'spark':
@@ -1616,7 +1658,7 @@ function renderSkeleton() {
                eps:50,volume:52,week52_high:62,week52_low:62,div_yield:48,
                ps_ratio:36,pb_ratio:36,ev_ebitda:52,debt_equity:36,roe:46,roa:46,
                gross_margin:48,op_margin:44,net_margin:44,revenue_growth:52,
-               eps_growth:50,beta:34,sector:72,spark:64};
+               eps_growth:50,beta:34,arb_pct:52,sector:72,spark:64};
   const row = `<tr>${cols.map(c=>`<td><div class="skel" style="width:${WW[c.id]||56}px;height:11px"></div></td>`).join('')}</tr>`;
   document.getElementById('tbody').innerHTML = Array(20).fill(row).join('');
 }
@@ -1677,7 +1719,8 @@ document.addEventListener('click', e => {
 // ═══════════════════════════════════════════════════════════════════════
 function setPill(preset) {
   activePill = preset;
-  recentIpoFilter = false;
+  recentIpoFilter  = false;
+  dualListedFilter = false;
 
   // Visual state
   document.querySelectorAll('.pill').forEach(b => b.classList.toggle('active', b.dataset.preset === preset));
@@ -1697,6 +1740,10 @@ function setPill(preset) {
     ['p_ffo','ffo_yield','cap_rate_implied','nav_discount'].forEach(id => {
       const c = visibleCols; if (!c.has(id)) { c.add(id); renderHeader(); }
     });
+  } else if (cfg._duallisted) {
+    // Filter to dual-listed stocks; auto-enable arbitrage column
+    dualListedFilter = true;
+    if (!visibleCols.has('arb_pct')) { visibleCols.add('arb_pct'); renderHeader(); }
   } else {
     Object.entries(cfg).forEach(([id, val]) => {
       const el = document.getElementById(id); if (el) el.value = val;
@@ -1756,7 +1803,8 @@ function applyFilters() {
     if (!isNaN(evfcfMx) && (s.ev_fcf==null||s.ev_fcf<=0||s.ev_fcf>evfcfMx))     return false;
     if (!isNaN(quickMn) && (s.quick_ratio==null||s.quick_ratio<quickMn))         return false;
     if (!isNaN(advMn)   && (s.adv_ils==null||s.adv_ils<advMn))                   return false;
-    if (recentIpoFilter && !(s.ipo_date && s.ipo_date >= twoYearsAgo))        return false;
+    if (recentIpoFilter  && !(s.ipo_date && s.ipo_date >= twoYearsAgo)) return false;
+    if (dualListedFilter && !s.us_ticker)                                 return false;
     return true;
   });
 
@@ -2540,6 +2588,75 @@ function _setBondSort(col) {
   _renderBondTable();
 }
 
+// ── Bond YTM estimator (Newton-Raphson, mirrors bond_math.py) ────────────────
+// Calculates client-side — no server call, instant feedback.
+const _LS_YTM_KEY = 'tase_bond_ytm_v1';
+let _bondYtmData  = {};   // { symbol: { coupon, years } }
+
+function _loadBondYtmStore() {
+  try { _bondYtmData = JSON.parse(localStorage.getItem(_LS_YTM_KEY) || '{}'); }
+  catch (_) { _bondYtmData = {}; }
+}
+function _saveBondYtmStore() {
+  try { localStorage.setItem(_LS_YTM_KEY, JSON.stringify(_bondYtmData)); }
+  catch (_) {}
+}
+
+function _estimateYTM(price, coupon, years, freq = 2) {
+  if (!price || coupon < 0 || !years || years <= 0 || price <= 0) return null;
+  const F = 100, n = Math.round(years * freq);
+  const cpn = (coupon / 100) * F / freq;
+
+  function priceAtY(y) {
+    let pv = 0;
+    for (let t = 1; t <= n; t++) pv += cpn / Math.pow(1 + y, t);
+    return pv + F / Math.pow(1 + y, n);
+  }
+
+  // Yield Approximation Formula as seed (avoids divergence)
+  let y = Math.max(
+    ((coupon / 100 * F) + (F - price) / years) / ((F + price) / 2) / freq,
+    1e-6
+  );
+  for (let i = 0; i < 100; i++) {
+    const f  = priceAtY(y) - price;
+    const df = (priceAtY(y + 1e-7) - priceAtY(y - 1e-7)) / 2e-7;
+    if (df === 0) break;
+    const d = f / df;
+    y = Math.max(y - d, 1e-9);
+    if (Math.abs(d) < 1e-8) break;
+  }
+  const ytm = y * freq * 100;
+  return (ytm >= 0.01 && ytm <= 99) ? +ytm.toFixed(2) : null;
+}
+
+function _ytmClass(ytm) {
+  if (ytm == null) return '';
+  return ytm < 4 ? 'ytm-low' : ytm < 8 ? 'ytm-mid' : 'ytm-high';
+}
+
+function _updateYtmCell(sym, price) {
+  const d = _bondYtmData[sym] || {};
+  const c = parseFloat(d.coupon), y = parseFloat(d.years);
+  const el = document.getElementById(`ytm-${sym}`);
+  if (!el) return;
+  if (isNaN(c) || isNaN(y)) { el.textContent = '—'; el.className = 'ytm-val'; return; }
+  const ytm = _estimateYTM(price, c, y);
+  el.className = `ytm-val ${_ytmClass(ytm)}`;
+  el.textContent = ytm != null ? ytm.toFixed(2) + '%' : 'err';
+}
+
+function _onBondYtmInput(e) {
+  const inp = e.target;
+  const sym   = inp.dataset.sym;
+  const field = inp.dataset.field;   // 'coupon' or 'years'
+  const price = parseFloat(inp.dataset.price);
+  if (!_bondYtmData[sym]) _bondYtmData[sym] = {};
+  _bondYtmData[sym][field] = inp.value;
+  _saveBondYtmStore();
+  _updateYtmCell(sym, price);
+}
+
 function _renderBondTable() {
   const bonds = _filteredBonds();
   const { col, asc } = _bondSort;
@@ -2580,6 +2697,15 @@ function _renderBondTable() {
       <td><span class="health-pill ${h.cls}">${h.lbl}</span></td>
       <td style="color:var(--text2);font-size:10px">${b.sector||'—'}</td>
       <td><a class="bond-maya-link" href="${b.maya_url}" target="_blank" rel="noopener">Maya ↗</a></td>
+      <td><input class="bond-ytm-inp" type="number" min="0" max="30" step="0.05"
+           placeholder="Cpn%" data-sym="${b.symbol}" data-field="coupon" data-price="${b.price_pct||0}"
+           value="${(_bondYtmData[b.symbol]||{}).coupon||''}"
+           oninput="_onBondYtmInput(event)"></td>
+      <td><input class="bond-ytm-inp" type="number" min="0.1" max="30" step="0.1"
+           placeholder="Yrs" data-sym="${b.symbol}" data-field="years" data-price="${b.price_pct||0}"
+           value="${(_bondYtmData[b.symbol]||{}).years||''}"
+           oninput="_onBondYtmInput(event)"></td>
+      <td style="text-align:right"><span class="ytm-val" id="ytm-${b.symbol}">—</span></td>
     </tr>`;
   }).join('');
 
@@ -2602,13 +2728,23 @@ function _renderBondTable() {
     <th>Issuer Health</th>
     <th class="${thCls('sector')}" onclick="_setBondSort('sector')">Sector${arr('sector')}</th>
     <th>Filings</th>
+    <th title="Enter annual coupon rate (%) to calculate YTM">Coupon %</th>
+    <th title="Enter years remaining to maturity to calculate YTM">Years</th>
+    <th title="Estimated Yield to Maturity — Newton-Raphson, semi-annual">Est. YTM</th>
   </tr></thead>`;
 
   document.getElementById('bond-tbody-wrap').innerHTML =
     `<div class="bond-tbl-wrap"><table class="bond-tbl">${thead}<tbody>${rows||'<tr><td colspan="18" style="padding:20px;color:var(--text3);text-align:center">No bonds match the filter</td></tr>'}</tbody></table></div>`;
+  // After render: load stored values + recompute any filled-in YTMs
+  _loadBondYtmStore();
+  _bondData.forEach(b => {
+    const d = _bondYtmData[b.symbol];
+    if (d && d.coupon && d.years) _updateYtmCell(b.symbol, b.price_pct || 0);
+  });
 }
 
 function _renderBondHub() {
+  _loadBondYtmStore();   // ensure stored coupon/years are ready before first render
   const all = _bondData;
   // Summary stats
   const totalVal = all.reduce((a,b) => a + (b.market_value || 0), 0);
