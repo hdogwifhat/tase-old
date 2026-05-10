@@ -1181,6 +1181,172 @@ def stock_news(ticker):
     return jsonify(news)
 
 
+@app.route('/api/maya/<ticker>')
+def maya_reports(ticker):
+    """
+    Return the last 3 Immediate Reports (דיווחים מיידיים) from Maya for a
+    given TASE ticker.  Results are cached in Redis for 1 hour.
+
+    Response shape:
+      {
+        "ticker":    "TEVA",
+        "reports":   [{"title": "...", "date": "2024-01-15", "url": "..."}],
+        "maya_url":  "https://maya.tase.co.il/reports/company?symbol=TEVA",
+        "blocked":   false,
+        "from_cache": false
+      }
+    When the Maya API is unreachable/blocked, reports=[] and blocked=true.
+    """
+    ticker = ticker.upper().replace('.TA', '')
+    cache_key = f'tase:maya:{ticker}'
+
+    # ── 1. Redis cache (1-hour TTL) ──────────────────────────────────────
+    cached = rget(cache_key)
+    if cached and cached.get('_ts') and (time.time() - cached['_ts']) < 3600:
+        return jsonify({**cached, 'from_cache': True})
+
+    deep_link = f'https://maya.tase.co.il/reports/company?symbol={ticker}'
+    result = {'ticker': ticker, 'reports': [], 'maya_url': deep_link,
+              'blocked': False, '_ts': time.time()}
+
+    # ── 2. Browser-mimicking headers (WAF bypass attempt) ───────────────
+    _maya_hdrs = {
+        'User-Agent':      ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                            'AppleWebKit/537.36 (KHTML, like Gecko) '
+                            'Chrome/124.0.0.0 Safari/537.36'),
+        'Accept':          'application/json, text/plain, */*',
+        'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Referer':         'https://maya.tase.co.il/',
+        'Origin':          'https://maya.tase.co.il',
+        'sec-fetch-dest':  'empty',
+        'sec-fetch-mode':  'cors',
+        'sec-fetch-site':  'same-site',
+    }
+
+    # ── 3. Step A — resolve ticker → Maya numeric company ID ─────────────
+    # Company IDs are stable; cache them for 7 days.
+    id_key  = f'tase:maya_id:{ticker}'
+    company_id = rget(id_key)
+
+    if not company_id:
+        try:
+            search_url = ('https://mayaapi.tase.co.il/api/company/searchByName'
+                          f'?name={ticker}&exactSearch=true')
+            r = _req_mod.get(search_url, headers=_maya_hdrs, timeout=8)
+            if r.status_code == 200:
+                hits = r.json()
+                # Response: list or dict with a data list
+                items = hits if isinstance(hits, list) else hits.get('data', [])
+                if items:
+                    company_id = items[0].get('CompanyId') or items[0].get('companyId')
+                    if company_id:
+                        rset(id_key, company_id, ttl=86400 * 7)
+                        print(f'[Maya] {ticker} → company_id={company_id}', flush=True)
+        except Exception as _e:
+            print(f'[Maya] ID lookup error for {ticker}: {_e}', flush=True)
+
+    # ── 4. Step B — fetch last 3 Immediate Reports (reportType=1) ────────
+    if company_id:
+        try:
+            reports_url = ('https://mayaapi.tase.co.il/api/report/allreports'
+                           f'?company={company_id}&reportType=1&period=0&pageSize=3')
+            r = _req_mod.get(reports_url, headers=_maya_hdrs, timeout=8)
+
+            if r.status_code == 200:
+                body  = r.json()
+                items = body if isinstance(body, list) else body.get('data', [])
+                reports = []
+                for item in items[:3]:
+                    rid   = item.get('Id') or item.get('id') or ''
+                    title = (item.get('Title') or item.get('title') or '').strip()
+                    date  = (item.get('PubDate') or item.get('pubDate') or '')[:10]
+                    url   = (f'https://maya.tase.co.il/reports/details/{rid}'
+                             if rid else deep_link)
+                    if title:
+                        reports.append({'title': title, 'date': date, 'url': url})
+                result['reports'] = reports
+
+                # ── Verification console.log ──────────────────────────
+                print(f'[Maya] {ticker}: fetched {len(reports)} immediate reports.',
+                      flush=True)
+                for rep in reports:
+                    print(f'[Maya]   {rep["date"]}  {rep["title"][:60]}', flush=True)
+
+            elif r.status_code in (403, 429):
+                result['blocked'] = True
+                print(f'[Maya] {ticker}: WAF blocked ({r.status_code}).', flush=True)
+            else:
+                print(f'[Maya] {ticker}: unexpected status {r.status_code}.', flush=True)
+
+        except Exception as _e:
+            result['blocked'] = True
+            print(f'[Maya] {ticker}: reports fetch error — {_e}', flush=True)
+    else:
+        # No company ID — try a direct symbol-based URL as last resort
+        try:
+            sym_url = ('https://mayaapi.tase.co.il/api/report/allreports'
+                       f'?symbol={ticker}&reportType=1&period=0&pageSize=3')
+            r = _req_mod.get(sym_url, headers=_maya_hdrs, timeout=8)
+            if r.status_code == 200:
+                body  = r.json()
+                items = body if isinstance(body, list) else body.get('data', [])
+                reports = []
+                for item in items[:3]:
+                    rid   = item.get('Id') or item.get('id') or ''
+                    title = (item.get('Title') or item.get('title') or '').strip()
+                    date  = (item.get('PubDate') or item.get('pubDate') or '')[:10]
+                    url   = (f'https://maya.tase.co.il/reports/details/{rid}'
+                             if rid else deep_link)
+                    if title:
+                        reports.append({'title': title, 'date': date, 'url': url})
+                result['reports'] = reports
+                print(f'[Maya] {ticker}: fallback symbol fetch → {len(reports)} reports.',
+                      flush=True)
+            else:
+                result['blocked'] = True
+        except Exception:
+            result['blocked'] = True
+
+    # ── 5. yfinance news fallback ─────────────────────────────────────────
+    # mayaapi.tase.co.il is WAF-blocked from cloud IPs (403 regardless of
+    # auth headers/key). As a best-effort alternative, yfinance aggregates
+    # TASE regulatory news from Yahoo Finance which includes some immediate
+    # reports.  We filter for TASE-sourced items and return up to 3.
+    if not result['reports']:
+        try:
+            _yf_news = yf.Ticker(f'{ticker}.TA').news or []
+            _filing_kw = ('tase', 'maya', 'מיידי', 'דיווח', 'immediate', 'filing',
+                          'disclosure', 'announcement', 'regulatory')
+            def _is_filing(n):
+                text = (str(n.get('publisher','')) + ' ' + str(n.get('title',''))).lower()
+                return any(kw in text for kw in _filing_kw)
+            _hits = [n for n in _yf_news if _is_filing(n)][:3]
+            if _hits:
+                def _ts_date(ts):
+                    try:
+                        import datetime as _dt
+                        return _dt.datetime.utcfromtimestamp(int(ts)).strftime('%Y-%m-%d')
+                    except Exception:
+                        return ''
+                result['reports'] = [{
+                    'title':  n.get('title', ''),
+                    'date':   _ts_date(n.get('providerPublishTime', 0)),
+                    'url':    n.get('link') or n.get('url') or deep_link,
+                    'source': n.get('publisher', 'Yahoo Finance'),
+                } for n in _hits]
+                result['blocked'] = False
+                print(f'[Maya] {ticker}: yfinance fallback → {len(_hits)} items.',
+                      flush=True)
+        except Exception as _yfe:
+            print(f'[Maya] {ticker}: yfinance fallback error — {_yfe}', flush=True)
+
+    # ── 6. Cache and return ───────────────────────────────────────────────
+    # Short TTL (5 min) if blocked to retry sooner; 1 hr if we got data.
+    ttl = 300 if (result['blocked'] and not result['reports']) else 3600
+    rset(cache_key, result, ttl=ttl)
+    return jsonify({**result, 'from_cache': False})
+
+
 @app.route('/api/market')
 def market():
     # Check Redis then memory cache
