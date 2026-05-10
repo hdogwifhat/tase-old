@@ -1521,6 +1521,78 @@ def bonds_api():
     return jsonify({'bonds': enriched, 'timestamp': ts, 'count': len(enriched)})
 
 
+@app.route('/api/bond_ytm')
+def bond_ytm_api():
+    """
+    Bond YTM calculator — pure math, no external API calls.
+
+    Query parameters (all required):
+      price  : Market price as % of par  (e.g. 102.5)
+      coupon : Annual coupon rate as %   (e.g. 4.5)
+      years  : Years to maturity         (e.g. 3.5)
+      freq   : Coupon payments/year      (1 or 2, default 2 = semi-annual)
+
+    Optional:
+      ytm    : If supplied, returns theoretical PRICE for that YTM instead
+               (inverse calculation — useful for 'what price gives me X%?')
+
+    Example:
+      /api/bond_ytm?price=102.5&coupon=4.5&years=3.5
+      /api/bond_ytm?price=102.5&coupon=4.5&years=3.5&ytm=5.0
+    """
+    from bond_math import estimate_ytm, current_yield, price_from_ytm, modified_duration
+
+    try:
+        price  = float(request.args['price'])
+        coupon = float(request.args['coupon'])
+        years  = float(request.args['years'])
+        freq   = int(request.args.get('freq', 2))
+    except (KeyError, ValueError, TypeError) as _e:
+        return jsonify({'error': f'Missing or invalid parameter: {_e}. '
+                                  'Required: price, coupon, years'}), 400
+
+    # ── Inverse mode: price for a given YTM ──────────────────────────────
+    if 'ytm' in request.args:
+        try:
+            target_ytm = float(request.args['ytm'])
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Invalid ytm parameter'}), 400
+        theo_price = price_from_ytm(target_ytm, coupon, years, freq=freq)
+        result = {
+            'mode':        'price_from_ytm',
+            'input':       {'target_ytm': target_ytm, 'coupon': coupon, 'years': years, 'freq': freq},
+            'theo_price':  theo_price,
+        }
+        print(f'[YTM] price_from_ytm: ytm={target_ytm}% coupon={coupon}% '
+              f'years={years} → price={theo_price}', flush=True)
+        return jsonify(result)
+
+    # ── Standard mode: YTM from price ────────────────────────────────────
+    ytm      = estimate_ytm(price, coupon, years, freq=freq)
+    cy       = current_yield(price, coupon)
+    mod_dur  = modified_duration(ytm, coupon, years, freq=freq) if ytm else None
+
+    # ── Verification console.log ─────────────────────────────────────────
+    print(f'[YTM] price={price} coupon={coupon}% years={years} freq={freq} '
+          f'→ YTM={ytm}%  CurrentYield={cy}%  ModDur={mod_dur}y', flush=True)
+
+    result = {
+        'mode':          'ytm_from_price',
+        'input': {
+            'price_pct':   price,
+            'coupon_rate': coupon,
+            'years':       years,
+            'freq':        freq,
+        },
+        'ytm':            ytm,           # annualised YTM %
+        'current_yield':  cy,            # simpler income metric %
+        'mod_duration':   mod_dur,       # price sensitivity to 1% yield move
+        'vs_par':         round(price - 100, 2),  # premium (+) or discount (-)
+        'method':         'newton_raphson',
+    }
+    return jsonify(result)
+
+
 _fx_mem = {'data': None, 'ts': 0}
 
 @app.route('/api/fx')
