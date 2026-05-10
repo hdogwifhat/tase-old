@@ -1657,6 +1657,18 @@ def earnings():
         return jsonify({'error': str(e)}), 500
 
 
+_DESIGN_EXTS = ('.jsx', '.css', '.js', '.map')
+
+@app.route('/<path:filename>')
+def serve_design_asset(filename):
+    """Serve React/JSX/CSS design files directly from BASE_DIR."""
+    if any(filename.endswith(ext) for ext in _DESIGN_EXTS):
+        filepath = os.path.join(BASE_DIR, filename)
+        if os.path.isfile(filepath):
+            return send_from_directory(BASE_DIR, filename)
+    return jsonify({'error': 'not found'}), 404
+
+
 if __name__ == '__main__':
     port = int(os.getenv('TASE_PORT') or os.getenv('PORT') or 5000)
     url  = f'http://localhost:{port}'
