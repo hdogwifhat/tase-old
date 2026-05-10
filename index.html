@@ -349,6 +349,7 @@
       flex-shrink: 0; z-index: 48;
       overflow-x: auto; white-space: nowrap;
       font-size: 12px;
+      position: sticky; top: 102px;  /* site-header(52) + top-tabs(50) */
     }
     #market-bar::-webkit-scrollbar { display: none; }
     .mkt-seg { display: flex; align-items: center; gap: 8px; padding: 0 16px; }
@@ -368,6 +369,7 @@
       display: flex; align-items: center; gap: 4px;
       flex-shrink: 0; z-index: 47;
       overflow-x: auto; white-space: nowrap;
+      position: sticky; top: 136px;  /* 102 + market-bar(34) */
     }
     #pill-bar::-webkit-scrollbar { display: none; }
     .pill { background: transparent; border: 1px solid var(--border2); color: var(--text2);
@@ -404,6 +406,7 @@
       background: var(--surface); border-bottom: 1px solid var(--border);
       padding: 8px 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
       flex-shrink: 0; z-index: 46;
+      position: sticky; top: 178px;  /* 136 + pill-bar(42) */
     }
     .fg { display: flex; align-items: center; gap: 5px; }
     .fg label { font-size: 10px; font-weight: 600; color: var(--text3); white-space: nowrap;
@@ -431,7 +434,8 @@
       font-size: 9px; text-transform: uppercase; letter-spacing: 0.07em;
       padding: 0 7px; height: 24px; text-align: right; white-space: nowrap;
       cursor: pointer; user-select: none; border-bottom: 1px solid var(--border);
-      position: sticky; top: 0; z-index: 2;
+      /* Sticks below: site-header(52) + top-tabs(50) + market-bar(34) + pill-bar(42) + filters(~48) */
+      position: sticky; top: 226px; z-index: 2;
       font-family: 'Inter', sans-serif;
     }
     thead th:hover { color: var(--text2); background: var(--surface2); }
@@ -442,6 +446,8 @@
       transition: background 0.1s;
     }
     tbody tr:hover { background: #141419; }
+    /* ── Keyboard cursor row ──────────────────────────────────────────── */
+    tbody tr.kb-focus { background: #1c1c2a !important; box-shadow: inset 3px 0 0 var(--accent); }
     td {
       padding: 0 7px; height: var(--row-h);
       text-align: right; color: var(--text2); vertical-align: middle;
@@ -468,7 +474,7 @@
     }
     .ticker:hover { color: #60a5fa; }
     .co-name { color: var(--text); max-width: 180px; overflow: hidden;
-                text-overflow: ellipsis; white-space: nowrap; display: block; font-size: 13px; }
+                text-overflow: ellipsis; white-space: nowrap; display: block; font-size: 11.5px; }
     .pos  { color: var(--green); }
     .neg  { color: var(--red); }
     .zero { color: var(--text2); }
@@ -1820,11 +1826,69 @@ function applyFilters() {
 
 function clearFilters() {
   ['f-search','f-pe-max','f-ps-max','f-mcap-min','f-div-min',
-   'f-chg-min','f-roe-min','f-revg-min','f-de-max'].forEach(id =>
-    document.getElementById(id).value='');
-  document.getElementById('f-rating').value='';
+   'f-chg-min','f-roe-min','f-revg-min','f-de-max'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
   setPill('');
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Keyboard navigation — Bloomberg-style row cursor
+// ═══════════════════════════════════════════════════════════════════════
+let _kbRow = -1;   // index into currentRows of the highlighted row
+
+function _kbMove(delta) {
+  if (!currentRows.length) return;
+  _kbRow = Math.max(0, Math.min(currentRows.length - 1, _kbRow + delta));
+  const rows = document.querySelectorAll('tbody tr');
+  rows.forEach(r => r.classList.remove('kb-focus'));
+  if (rows[_kbRow]) {
+    rows[_kbRow].classList.add('kb-focus');
+    rows[_kbRow].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+}
+
+function _kbReset() {
+  _kbRow = -1;
+  document.querySelectorAll('tbody tr.kb-focus').forEach(r => r.classList.remove('kb-focus'));
+}
+
+document.addEventListener('keydown', e => {
+  // Let normal typing work inside inputs / selects
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
+    if (e.key === 'Escape') { e.target.blur(); _kbReset(); }
+    return;
+  }
+  switch (e.key) {
+    case 'ArrowDown':
+      e.preventDefault();
+      _kbMove(_kbRow < 0 ? 0 : 1);
+      break;
+    case 'ArrowUp':
+      e.preventDefault();
+      _kbMove(-1);
+      break;
+    case 'Enter':
+      if (_kbRow >= 0 && currentRows[_kbRow])
+        gotoStock(currentRows[_kbRow].ticker);
+      break;
+    case '/':
+      e.preventDefault();
+      document.getElementById('f-search').focus();
+      break;
+    case 'Escape':
+      const srch = document.getElementById('f-search');
+      if (srch.value) { srch.value = ''; applyFilters(); }
+      else setPill('');
+      _kbReset();
+      break;
+  }
+});
+
+// Reset cursor whenever the visible rows change
+const _origApply = applyFilters;   // already defined above
+applyFilters = function(...a) { _kbReset(); _origApply(...a); };
 
 function sortData(data) {
   return [...data].sort((a,b) => {
