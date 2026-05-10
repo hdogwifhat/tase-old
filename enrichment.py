@@ -8,7 +8,6 @@ Data sources (in order of usage):
                                   ROE, ROA, Revenue Growth, EPS Growth,
                                   Gross/Op/Net margins, Forward P/E, Beta.
   2. FMP stable/profile — company description, CEO, logo, IPO date, canonical name.
-  3. Finnhub stock/recommendation — analyst Buy/Hold/Sell counts.
 
 Note: MAYA / TASE REST API / Bizportal are all WAF-blocked for programmatic
 access and cannot be used directly.
@@ -21,11 +20,9 @@ ENRICH_TTL   = 86400
 ENRICH_TOP_N = 150      # now covers more stocks since tase_financials is free
 
 FMP_BASE = 'https://financialmodelingprep.com/stable'
-FNH_BASE = 'https://finnhub.io/api/v1'
 
 
 def _fmp(): return os.getenv('FMP_API_KEY', '')
-def _fnh(): return os.getenv('FINNHUB_API_KEY', '')
 
 
 # ── Cache I/O (Redis-first, JSON file fallback) ────────────────────────────
@@ -73,25 +70,6 @@ def _fmp_profile(fmp_sym):
     return {}
 
 
-# ── Finnhub recommendation ─────────────────────────────────────────────────
-
-def _fnh_rec(bare_sym):
-    d = _get(f'{FNH_BASE}/stock/recommendation', {'symbol': bare_sym, 'token': _fnh()})
-    return d[0] if isinstance(d, list) and d else {}
-
-
-def _rating(rec):
-    if not rec: return None
-    buy   = rec.get('strongBuy', 0) + rec.get('buy', 0)
-    hold  = rec.get('hold', 0)
-    sell  = rec.get('sell', 0) + rec.get('strongSell', 0)
-    total = buy + hold + sell
-    if total == 0: return None
-    if buy / total >= 0.6:  return 'Buy'
-    if sell / total >= 0.4: return 'Sell'
-    return 'Hold'
-
-
 # ── Empty enrichment row ───────────────────────────────────────────────────
 
 def _empty():
@@ -110,8 +88,6 @@ def _empty():
         # Phase 3: Real estate metrics
         'ffo': None, 'affo': None, 'p_ffo': None,
         'ffo_yield': None, 'cap_rate_implied': None, 'nav_discount': None,
-        'analyst_rating': None,
-        'analyst_buy': None, 'analyst_hold': None, 'analyst_sell': None,
     }
 
 
@@ -121,12 +97,10 @@ def build_enrichment(yf_stocks):
     """
     Build enrichment for top ENRICH_TOP_N stocks.
 
-    Per stock (3 calls):
+    Per stock (2 calls):
       1. tase_financials.get_financials()  — SQLite-cached yfinance ratios
       2. FMP stable/profile                — company profile (1 FMP call/stock)
-      3. Finnhub stock/recommendation      — analyst consensus (1 Finnhub call/stock)
 
-    Total Finnhub: up to 150 calls — spread over ~165 s at 1.1 s sleep.
     Total FMP: up to 150 calls — within 250/day free limit.
     """
     from tase_financials import get_financials
@@ -151,10 +125,6 @@ def build_enrichment(yf_stocks):
 
         # ── 2. FMP profile ──────────────────────────────────────────────────
         prof = _fmp_profile(fmp_sym)
-
-        # ── 3. Finnhub analyst recommendation ──────────────────────────────
-        rec = _fnh_rec(bare)
-        time.sleep(1.1)   # Finnhub: 60 calls/min limit
 
         # Canonical company name: prefer FMP (accurate for dual-listed stocks),
         # fall back to yfinance name from worker (may have wrong names like
@@ -201,11 +171,6 @@ def build_enrichment(yf_stocks):
             'ffo_yield':      fin.get('ffo_yield'),
             'cap_rate_implied': fin.get('cap_rate_implied'),
             'nav_discount':   fin.get('nav_discount'),
-            # Analyst (Finnhub)
-            'analyst_rating': _rating(rec),
-            'analyst_buy':    (rec.get('strongBuy', 0) + rec.get('buy', 0)) if rec else None,
-            'analyst_hold':   rec.get('hold') if rec else None,
-            'analyst_sell':   (rec.get('sell', 0) + rec.get('strongSell', 0)) if rec else None,
         }
 
     print(f'  [Enrich] Done — {len(result)} stocks.')

@@ -277,23 +277,6 @@
     /* Combo chart */
     #combo-chart-wrap { margin-bottom: 10px; }
 
-    /* ── Analyst — gauge style ──────────────────────────────────────── */
-    .analyst-grid { display: grid; grid-template-columns: auto 1fr; gap: 24px; align-items: center; margin-bottom: 16px; }
-    .analyst-gauge { position: relative; width: 120px; height: 64px; }
-    .analyst-gauge svg { overflow: visible; }
-    .gauge-label { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
-                   font-size: 16px; font-weight: 800; text-align: center; white-space: nowrap; }
-    .analyst-breakdown { display: flex; flex-direction: column; gap: 6px; }
-    .ana-row { display: flex; align-items: center; gap: 8px; font-size: 11px; }
-    .ana-bar-track { flex: 1; height: 5px; background: var(--border2); border-radius: 3px; overflow: hidden; }
-    .ana-bar-fill  { height: 100%; border-radius: 3px; transition: width 0.5s; }
-    .ana-lbl { width: 32px; color: var(--text3); font-size: 10px; font-weight: 700; }
-    .ana-cnt { width: 28px; text-align: right; font-family: 'JetBrains Mono', monospace;
-               font-size: 10px; color: var(--text2); }
-    .ana-pct { width: 36px; text-align: right; font-family: 'JetBrains Mono', monospace;
-               font-size: 10px; color: var(--text3); }
-    .big-rating { font-size: 28px; font-weight: 800; }
-    .rating-sub { font-size: 10px; color: var(--text3); margin-top: 2px; }
 
     /* ── News ──────────────────────────────────────────────────────── */
     .news-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
@@ -397,8 +380,6 @@
         <span class="side-icon">≡</span> Statistics</a>
       <a class="side-link" data-sec="financials"  onclick="showSection('financials')">
         <span class="side-icon">∫</span> Financials</a>
-      <a class="side-link" data-sec="analysts"    onclick="showSection('analysts')">
-        <span class="side-icon">◎</span> Analysts</a>
       <a class="side-link" data-sec="news"        onclick="showSection('news')">
         <span class="side-icon">◈</span> News</a>
       <a class="side-link" data-sec="peers"       onclick="showSection('peers')">
@@ -534,10 +515,6 @@
         </div>
       </div>
 
-      <!-- ── Analysts ─────────────────────────────────────────────────── -->
-      <div id="sec-analysts" class="scroll-section">
-        <div class="sec-heading">Analyst Consensus</div>
-        <div id="analyst-content"><div class="dim">Loading…</div></div>
       </div>
 
       <!-- ── News ──────────────────────────────────────────────────────── -->
@@ -643,7 +620,6 @@ async function loadStock() {
   renderHeader();
   renderTearSheet();
   renderStatistics();
-  renderAnalysts();
 
   allOHLCV = detailData.ohlcv || [];
   finData  = {
@@ -1120,58 +1096,6 @@ function renderComboChart(data, tab) {
   </svg>`;
 }
 
-// ── Analysts — gauge ──────────────────────────────────────────────────────
-function renderAnalysts() {
-  const s = stockInfo;
-  const buy=s.analyst_buy||0, hold=s.analyst_hold||0, sell=s.analyst_sell||0;
-  const total=buy+hold+sell;
-  const el=document.getElementById('analyst-content');
-  if (!total) {
-    el.innerHTML='<div class="dim">No analyst coverage data available for this stock.</div>'; return;
-  }
-  const bp=buy/total*100, hp=hold/total*100, sp=sell/total*100;
-  const ratingColor = s.analyst_rating==='Buy' ? 'var(--green)' : s.analyst_rating==='Sell' ? 'var(--red)' : 'var(--amber)';
-
-  // SVG arc gauge
-  const R=52, cx=60, cy=60;
-  const toArc=(pct,startDeg)=>{
-    const start=startDeg*Math.PI/180, end=(startDeg+pct*180/100)*Math.PI/180;
-    const x1=cx+R*Math.cos(start), y1=cy+R*Math.sin(start);
-    const x2=cx+R*Math.cos(end),   y2=cy+R*Math.sin(end);
-    const lg=pct*180/100>180?1:0;
-    return`M${x1.toFixed(1)},${y1.toFixed(1)} A${R},${R} 0 ${lg},1 ${x2.toFixed(1)},${y2.toFixed(1)}`;
-  };
-  const startAngle=180;
-  const arc1=toArc(bp,startAngle);
-  const arc2=toArc(hp,startAngle+bp*180/100);
-  const arc3=toArc(sp,startAngle+(bp+hp)*180/100);
-
-  el.innerHTML=`
-  <div class="analyst-grid">
-    <div>
-      <svg width="120" height="70" viewBox="0 0 120 70" style="overflow:visible">
-        <path d="${toArc(100,180)}" fill="none" stroke="var(--border2)" stroke-width="10" stroke-linecap="round"/>
-        <path d="${arc1}" fill="none" stroke="var(--green)" stroke-width="10" stroke-linecap="butt"/>
-        <path d="${arc2}" fill="none" stroke="var(--amber)" stroke-width="10" stroke-linecap="butt"/>
-        <path d="${arc3}" fill="none" stroke="var(--red)"   stroke-width="10" stroke-linecap="butt"/>
-      </svg>
-      <div style="text-align:center;margin-top:-10px">
-        <div class="big-rating" style="color:${ratingColor}">${esc(s.analyst_rating||'N/A')}</div>
-        <div class="rating-sub">${total} analysts</div>
-      </div>
-    </div>
-    <div class="analyst-breakdown">
-      ${[['Buy',buy,bp,'var(--green)'],['Hold',hold,hp,'var(--amber)'],['Sell',sell,sp,'var(--red)']].map(([lbl,cnt,pct,col])=>`
-      <div class="ana-row">
-        <span class="ana-lbl" style="color:${col}">${lbl}</span>
-        <div class="ana-bar-track"><div class="ana-bar-fill" style="width:${pct.toFixed(0)}%;background:${col}"></div></div>
-        <span class="ana-cnt">${cnt}</span>
-        <span class="ana-pct">${pct.toFixed(0)}%</span>
-      </div>`).join('')}
-    </div>
-  </div>`;
-}
-
 // ── News ──────────────────────────────────────────────────────────────────
 function renderNews(news) {
   const el = document.getElementById('news-content');
@@ -1237,7 +1161,7 @@ function renderPeers(allStocks) {
 }
 
 // ── Section navigation ────────────────────────────────────────────────────
-const SECS = ['overview','statistics','financials','analysts','news','peers'];
+const SECS = ['overview','statistics','financials','news','peers'];
 function showSection(sec) {
   const el = document.getElementById('sec-'+sec);
   if (el) window.scrollTo({top:el.getBoundingClientRect().top+window.scrollY-16,behavior:'smooth'});

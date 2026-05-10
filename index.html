@@ -452,10 +452,8 @@
     /* Column alignment */
     .col-ticker, .col-name, .col-sector  { text-align: left !important; }
     .col-ticker  { padding-left: 24px !important; }
-    .col-analyst_rating { text-align: center !important; }
     thead th.col-ticker, thead th.col-name, thead th.col-sector { text-align: left; }
     thead th.col-ticker  { padding-left: 24px; }
-    thead th.col-analyst_rating { text-align: center; }
     .col-favorite { width: 28px; text-align: center !important; padding: 0 4px !important; }
     thead th.col-favorite { text-align: center; width: 28px; padding: 0 4px; }
     .fav-star { font-size: 14px; cursor: pointer; opacity: 0.25; transition: opacity 0.12s, color 0.12s; display: inline-block; line-height: 1; }
@@ -481,11 +479,6 @@
     .na   { color: #2a2a35; }
 
 
-    .rating-badge { font-size: 10px; font-weight: 700; padding: 2px 8px;
-                     border-radius: 4px; white-space: nowrap; display: inline-block; letter-spacing: 0.04em; }
-    .rating-buy  { background: var(--green-dim); color: var(--green); border: 1px solid #166534; }
-    .rating-hold { background: var(--amber-dim); color: var(--amber); border: 1px solid #713f12; }
-    .rating-sell { background: var(--red-dim);   color: var(--red);   border: 1px solid #7f1d1d; }
     .sector-pill { font-size: 10.5px; color: #60a5fa; background: #001a33;
                     border: 1px solid #1e3a5f; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
 
@@ -999,16 +992,6 @@
     <input type="number" id="f-quick-min" placeholder="1" min="0" step="0.1" oninput="onFI()"></div>
   <div class="fg"><label>ADV &gt; ₪M</label>
     <input type="number" id="f-adv-min" placeholder="500" min="0" oninput="onFI()"></div>
-  <div class="f-sep"></div>
-  <div class="fg">
-    <label>Analyst</label>
-    <select id="f-rating" onchange="applyFilters()">
-      <option value="">Any</option>
-      <option value="Buy">Buy</option>
-      <option value="Hold">Hold</option>
-      <option value="Sell">Sell</option>
-    </select>
-  </div>
   <button class="btn-clear" onclick="clearFilters()">&#x2715; Clear</button>
 </div>
 
@@ -1195,7 +1178,6 @@ const COLUMNS = [
   { id:'cap_rate_implied',label:'Cap Rate',    defaultOn:false },
   { id:'nav_discount',   label:'NAV Disc',     defaultOn:false },
   // ─────────────────────────────────────
-  { id:'analyst_rating', label:'Analyst',      defaultOn:true  },
   { id:'sector',         label:'Sector',       defaultOn:false },
   { id:'spark',          label:'1M',           defaultOn:true  },
 ];
@@ -1307,11 +1289,6 @@ const fmtPctMono = (n, dec=1) => {
   return `<span class="${cls}">${sign}${n.toFixed(dec)}%</span>`;
 };
 
-const fmtRating = r => {
-  if (!r) return NA;
-  const cls = r==='Buy'?'rating-buy':r==='Sell'?'rating-sell':'rating-hold';
-  return `<span class="rating-badge ${cls}">${r}</span>`;
-};
 const jsStr = v => String(v ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 const esc = v => String(v ?? '').replace(/[&<>"']/g, ch => ({
   '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
@@ -1550,7 +1527,6 @@ function renderCell(s, id) {
       return `<td><span class="${cls}">${sign}${v.toFixed(1)}%</span></td>`;
     }
     // ────────────────────────────────────────────────────────────────────
-    case 'analyst_rating': return `<td class="col-analyst_rating">${fmtRating(s.analyst_rating)}</td>`;
     case 'sector':
       return `<td class="col-sector">${s.sector?`<span class="sector-pill">${s.sector}</span>`:NA}</td>`;
     case 'spark':
@@ -1640,7 +1616,7 @@ function renderSkeleton() {
                eps:50,volume:52,week52_high:62,week52_low:62,div_yield:48,
                ps_ratio:36,pb_ratio:36,ev_ebitda:52,debt_equity:36,roe:46,roa:46,
                gross_margin:48,op_margin:44,net_margin:44,revenue_growth:52,
-               eps_growth:50,beta:34,analyst_rating:42,sector:72,spark:64};
+               eps_growth:50,beta:34,sector:72,spark:64};
   const row = `<tr>${cols.map(c=>`<td><div class="skel" style="width:${WW[c.id]||56}px;height:11px"></div></td>`).join('')}</tr>`;
   document.getElementById('tbody').innerHTML = Array(20).fill(row).join('');
 }
@@ -1711,7 +1687,6 @@ function setPill(preset) {
    'f-roic-min','f-evfcf-max','f-quick-min','f-adv-min']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   document.getElementById('f-search').value = '';
-  document.getElementById('f-rating').value = '';
 
   const cfg = PILL_PRESETS[preset] || {};
   if (cfg._recentipo) {
@@ -1755,7 +1730,6 @@ function applyFilters() {
   const roeMn   = parseFloat(document.getElementById('f-roe-min').value);
   const revgMn  = parseFloat(document.getElementById('f-revg-min').value);
   const deMax   = parseFloat(document.getElementById('f-de-max').value);
-  const rating  = document.getElementById('f-rating').value;
   // Phase 2 filters
   const roicMn  = parseFloat((document.getElementById('f-roic-min')||{}).value);
   const evfcfMx = parseFloat((document.getElementById('f-evfcf-max')||{}).value);
@@ -1782,7 +1756,6 @@ function applyFilters() {
     if (!isNaN(evfcfMx) && (s.ev_fcf==null||s.ev_fcf<=0||s.ev_fcf>evfcfMx))     return false;
     if (!isNaN(quickMn) && (s.quick_ratio==null||s.quick_ratio<quickMn))         return false;
     if (!isNaN(advMn)   && (s.adv_ils==null||s.adv_ils<advMn))                   return false;
-    if (rating && s.analyst_rating!==rating)                                   return false;
     if (recentIpoFilter && !(s.ipo_date && s.ipo_date >= twoYearsAgo))        return false;
     return true;
   });
@@ -1870,14 +1843,9 @@ function renderDashboard(data) {
 }
 
 function renderShortlistPanel(rows) {
-  const rO = { Buy: 3, Hold: 2, Sell: 1 };
   const top = [...rows]
     .filter(s => s.market_cap && (s.roe != null || s.revenue_growth != null))
-    .sort((a, b) => {
-      const ra = rO[a.analyst_rating] || 0, rb = rO[b.analyst_rating] || 0;
-      if (rb !== ra) return rb - ra;
-      return (b.roe || 0) - (a.roe || 0);
-    })
+    .sort((a, b) => (b.roe || 0) - (a.roe || 0))
     .slice(0, 5);
   document.getElementById('top-shortlist-list').innerHTML = top.length ? top.map(s => `
     <div class="rank-row">
@@ -2233,15 +2201,11 @@ function renderFocusContent(kind) {
   }
 
   if (kind === 'shortlist') {
-    const rO = { Buy: 3, Hold: 2, Sell: 1 };
     const top = [...rows]
-      .sort((a, b) => {
-        const ra = rO[a.analyst_rating] || 0, rb = rO[b.analyst_rating] || 0;
-        if (rb !== ra) return rb - ra;
-        return (b.roe || 0) - (a.roe || 0);
-      })
+      .filter(s => s.roe != null && s.market_cap)
+      .sort((a, b) => (b.roe || 0) - (a.roe || 0))
       .slice(0, 100);
-    focus.innerHTML = focusShell('Analyst Shortlist', 'Sorted by analyst rating, then ROE — no black-box scoring',
+    focus.innerHTML = focusShell('Quality Shortlist', 'Sorted by Return on Equity — highest quality first',
       focusTable(top, [focusCols.ticker, focusCols.name, focusCols.cap, focusCols.ev, focusCols.pe, focusCols.roe, focusCols.rev]));
     return;
   }
@@ -3077,11 +3041,6 @@ function exportCSV() {
     { h: 'FFO Yield %',    v: s => s.ffo_yield ?? '' },
     { h: 'Cap Rate % (impl.)', v: s => s.cap_rate_implied ?? '' },
     { h: 'NAV Discount %', v: s => s.nav_discount ?? '' },
-    // Analyst
-    { h: 'Analyst Rating', v: s => s.analyst_rating || '' },
-    { h: 'Buy',            v: s => s.analyst_buy ?? '' },
-    { h: 'Hold',           v: s => s.analyst_hold ?? '' },
-    { h: 'Sell',           v: s => s.analyst_sell ?? '' },
   ];
 
   const esc_csv = v => {
@@ -3152,7 +3111,7 @@ document.addEventListener('keydown', e => {
 
 // ═══════════════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════════════
-// Gainers / Losers panel (replaces Analyst Shortlist on home)
+// Gainers / Losers panel
 // ═══════════════════════════════════════════════════════════════════════
 function renderGainersLosers(rows) {
   const withChg = rows.filter(s => s.change_pct != null && s.market_cap);

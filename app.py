@@ -508,11 +508,6 @@ def merge_enrichment(stocks, enrich_data=None):
         row['forward_pe']     = e.get('forward_pe')
         row['beta']           = e.get('beta')
         row['ipo_date']       = e.get('ipo_date')
-        row['analyst_rating'] = e.get('analyst_rating')
-        row['analyst_buy']    = e.get('analyst_buy')
-        row['analyst_hold']   = e.get('analyst_hold')
-        row['analyst_sell']   = e.get('analyst_sell')
-        row['price_target']   = e.get('price_target')
         # Phase 2 metrics
         row['quick_ratio']    = e.get('quick_ratio')
         row['roic']           = e.get('roic')
@@ -1248,7 +1243,6 @@ def bonds_api():
         row['op_margin']      = e.get('op_margin')
         row['revenue_growth'] = e.get('revenue_growth')
         row['ev_ebitda']      = e.get('ev_ebitda')
-        row['analyst_rating'] = e.get('analyst_rating')
         # Premium/discount vs par (bonds should be near 100)
         pct = b.get('price_pct') or 0
         row['vs_par'] = round(pct - 100, 2)  # positive = premium, negative = discount
