@@ -427,7 +427,10 @@
     .btn-clear:hover { background: var(--surface3); color: var(--text); }
 
     /* ── Table ───────────────────────────────────────────────────────── */
-    .table-wrap { min-height: 700px; overflow-x: auto; overflow-y: auto; }
+    /* overflow-y must NOT be auto/scroll/hidden — those make table-wrap a scroll
+       container and break position:sticky on thead (sticks relative to wrap,
+       not the viewport). overflow-x:auto for horizontal scroll is fine. */
+    .table-wrap { min-height: 700px; overflow-x: auto; overflow-y: visible; }
     table { width: 100%; border-collapse: collapse; }
     thead th {
       background: var(--surface); color: var(--text3); font-weight: 700;
