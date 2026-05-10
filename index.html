@@ -798,27 +798,125 @@
       .insight-panel { order: 2; }
       .insight-panel.panel-heatmap { order: 1; }
     }
-    @media (max-width: 720px) {
+    /* ══════════════════════════════════════════════════════════════════
+       BOTTOM NAV (mobile only — hidden on desktop)
+    ══════════════════════════════════════════════════════════════════ */
+    #bottom-nav {
+      display: none;
+      position: fixed; bottom: 0; left: 0; right: 0; height: 56px;
+      background: var(--surface); border-top: 1px solid var(--border);
+      z-index: 90; justify-content: space-around; align-items: center;
+    }
+    .bnav-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      background: none; border: none; color: var(--text3); cursor: pointer;
+      font-family: inherit; font-size: 9px; font-weight: 600;
+      padding: 4px 0; min-width: 60px; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .bnav-icon { font-size: 20px; line-height: 1.1; }
+    .bnav-btn.active { color: var(--accent); }
+    .bnav-btn:active  { opacity: 0.7; }
+
+    /* Mobile filter toggle button (hidden on desktop) */
+    .mob-filter-btn { display: none; }
+
+    /* ══════════════════════════════════════════════════════════════════
+       TABLET / LANDSCAPE PHONE  ≤ 768 px
+    ══════════════════════════════════════════════════════════════════ */
+    @media (max-width: 768px) {
+      /* ── Layout ──────────────────────────────────────────────────── */
+      body { padding-bottom: 56px; }
+      #bottom-nav { display: flex; }
+      .mob-filter-btn { display: flex; align-items: center; gap: 5px;
+                        font-size: 11px; padding: 5px 10px; }
+      /* Collapse redundant header buttons on small screens */
+      .density-btns, #btn-cols { display: none; }
+
+      /* ── Padding normalise ───────────────────────────────────────── */
       #site-header { padding: 0 14px; gap: 8px; }
       .logo-sub, .badge-count { display: none; }
-      #top-tabs, #market-bar, #pill-bar, .filters, .insight-shell, #focus-view, .table-caption { padding-left: 14px; padding-right: 14px; }
+      #top-tabs, #market-bar, #pill-bar, .insight-shell,
+      #focus-view, .table-caption { padding-left: 14px; padding-right: 14px; }
+
+      /* ── Compact top-tabs ────────────────────────────────────────── */
+      #top-tabs { padding: 5px 14px; top: 52px; }
+      .top-tab  { min-height: 30px; padding: 5px 12px; font-size: 12px; }
+
+      /* ── Sticky bar re-stack (shorter top-tabs on mobile) ────────── */
+      /* top-tabs: 52 + 40 = 92 */
+      #market-bar { top: 92px; }
+      #pill-bar   { top: 126px; /* 92+34 */ }
+
+      /* ── Advanced filters → collapsible drawer ───────────────────── */
+      .filters {
+        position: fixed; top: 52px; left: 0; right: 0; z-index: 89;
+        display: none; flex-direction: column; flex-wrap: nowrap;
+        gap: 6px; padding: 12px 14px;
+        max-height: 70vh; overflow-y: auto;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+        top: auto;  /* override sticky; position below site-header */
+        margin-top: 0;
+      }
+      .filters.mob-open { display: flex; }
+
+      /* Drawer backdrop */
+      .filter-backdrop {
+        display: none; position: fixed; inset: 0; z-index: 88;
+        background: rgba(0,0,0,0.45);
+      }
+      .filter-backdrop.mob-open { display: block; }
+
+      /* thead sticky recalc on mobile (no .filters bar) */
+      thead th { top: 162px !important; /* 92+34(market)+36(pill) */ }
+
+      /* ── Metric strip ────────────────────────────────────────────── */
+      .metric-strip { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+      .insight-shell { grid-template-columns: 1fr; }
+
+      /* ── Horizontal-scroll table with sticky first two columns ───── */
+      .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+      /* Sticky Ticker column */
+      td.col-ticker, thead th.col-ticker {
+        position: sticky; left: 0; z-index: 3;
+        background: var(--surface3); border-right: 1px solid var(--border2);
+        padding-left: 10px !important;
+      }
+      /* Sticky Name column (after 76 px ticker cell) */
+      td.col-name, thead th.col-name {
+        position: sticky; left: 76px; z-index: 3;
+        background: var(--surface3); border-right: 1px solid var(--border2);
+        max-width: 120px;
+      }
+      /* Tighten cells */
+      td { padding: 0 5px; font-size: 11px; }
+      thead th { padding: 0 5px; font-size: 9px; }
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       PORTRAIT PHONE  ≤ 480 px
+    ══════════════════════════════════════════════════════════════════ */
+    @media (max-width: 480px) {
+      /* Show only TA-35 and USD/ILS in market bar */
+      .mkt-seg:not(:first-child):not(:last-child) { display: none; }
+
+      /* Pill-bar: smaller pills, no separators */
+      .pill { font-size: 10px; padding: 3px 10px; }
+      .pill-sep { display: none; }
+
+      /* Drop name column — ticker alone is enough on portrait */
+      th.col-name, td.col-name { display: none; }
+      td.col-ticker, thead th.col-ticker { left: 0; }
+
+      /* Single-col insight strip */
       .metric-strip { grid-template-columns: 1fr; }
 
-      /* ── Compact table for landscape mobile ── */
-      /* Hide name column — ticker already identifies the stock */
-      th.col-name, td.col-name { display: none; }
+      /* Tighten header buttons */
+      .hdr-btn { font-size: 10px; padding: 5px 8px; }
 
-      /* Tighter cell padding */
-      td { padding: 0 5px; font-size: 11.5px; }
-      thead th { padding: 0 5px; height: 30px; font-size: 9px; }
-      .col-ticker { padding-left: 10px !important; }
-      thead th.col-ticker { padding-left: 10px; }
-
-      /* Truncate sector pill if visible */
-      .sector-pill { max-width: 70px; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
-
-      /* Rating badge compact */
-      .rating-badge { padding: 1px 5px; font-size: 9px; }
+      /* Sector pill truncate */
+      .sector-pill { max-width: 60px; overflow: hidden;
+                     text-overflow: ellipsis; display: inline-block; }
     }
 
     /* ── Loading overlay (first run only) ───────────────────────────── */
@@ -886,8 +984,11 @@
   </div>
   <a href="/dcf" class="hdr-btn" style="text-decoration:none;color:var(--amber);border-color:var(--amber-dim);font-weight:700">∫ DCF</a>
   <button class="hdr-btn" id="btn-cols" onclick="toggleColsPanel()">&#9776; Columns</button>
+  <button class="hdr-btn mob-filter-btn" id="btn-mob-filters" onclick="toggleMobFilters()">&#9881; Filters</button>
   <button class="hdr-btn" id="btn-refresh" onclick="forceRefresh()">&#x21BB; Refresh</button>
 </header>
+<!-- Drawer backdrop (mobile only) -->
+<div class="filter-backdrop" id="filter-backdrop" onclick="toggleMobFilters()"></div>
 
 <nav id="top-tabs" aria-label="Main views">
   <button class="top-tab active" data-view="home" onclick="openHomeView()">Home</button>
@@ -3426,6 +3527,67 @@ loadData(false);
 setInterval(() => loadData(false), 30*60*1000);
 setInterval(loadMarketBar, 5*60*1000);
 setInterval(loadIndices,   5*60*1000);
+</script>
+
+<!-- ── Bottom navigation (mobile only) ────────────────────────────────── -->
+<nav id="bottom-nav" aria-label="Mobile navigation">
+  <button class="bnav-btn active" id="bnav-home" onclick="_bnavGo('home')">
+    <span class="bnav-icon">⌂</span>Home
+  </button>
+  <button class="bnav-btn" id="bnav-screener" onclick="_bnavGo('screener')">
+    <span class="bnav-icon">⊞</span>Stocks
+  </button>
+  <button class="bnav-btn" id="bnav-heatmap" onclick="_bnavGo('heatmap')">
+    <span class="bnav-icon">▦</span>Map
+  </button>
+  <button class="bnav-btn" id="bnav-bonds" onclick="_bnavGo('bonds')">
+    <span class="bnav-icon">§</span>Bonds
+  </button>
+  <button class="bnav-btn" id="bnav-favs" onclick="_bnavGo('favorites')">
+    <span class="bnav-icon">★</span>Saved
+  </button>
+</nav>
+
+<script>
+// ── Mobile filter drawer ──────────────────────────────────────────────────
+function toggleMobFilters() {
+  document.querySelector('.filters').classList.toggle('mob-open');
+  document.getElementById('filter-backdrop').classList.toggle('mob-open');
+  const btn = document.getElementById('btn-mob-filters');
+  const open = document.querySelector('.filters').classList.contains('mob-open');
+  btn.textContent = open ? '✕ Close' : '⚙ Filters';
+  if (open) document.getElementById('f-search').focus();
+}
+
+// ── Bottom nav ────────────────────────────────────────────────────────────
+const _bnavMap = {
+  home:      () => openHomeView(),
+  screener:  () => openScreenerView ? openScreenerView() : openFocusView(''),
+  heatmap:   () => openFocusView('heatmap'),
+  bonds:     () => openFocusView('bonds'),
+  favorites: () => openFavoritesView ? openFavoritesView() : openFocusView('favorites'),
+};
+
+function _bnavGo(key) {
+  document.querySelectorAll('.bnav-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('bnav-' + key);
+  if (btn) btn.classList.add('active');
+  if (_bnavMap[key]) _bnavMap[key]();
+  // Close filter drawer if open
+  if (document.querySelector('.filters.mob-open')) toggleMobFilters();
+  // Scroll to top smoothly
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Sync bottom nav with top-tab clicks
+document.querySelectorAll('.top-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const view = tab.dataset.view;
+    document.querySelectorAll('.bnav-btn').forEach(b => b.classList.remove('active'));
+    const match = document.getElementById('bnav-' + view);
+    if (match) match.classList.add('active');
+  });
+});
 </script>
 </body>
 </html>
