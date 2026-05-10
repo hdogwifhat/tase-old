@@ -67,6 +67,12 @@ def _scheduler():
                 _last_fetch = now
                 threading.Thread(target=_background_refresh, daemon=True).start()
 
+            # ── US prices for arbitrage (same cadence as stock refresh) ──
+            _us_c   = rget('tase:us_prices') or {}
+            _us_age = now - float(_us_c.get('timestamp', 0)) if _us_c else 999999
+            if _us_age >= interval:
+                threading.Thread(target=_fetch_us_prices, daemon=True).start()
+
             # ── Daily enrichment (sector + fundamentals via FMP) ─────────
             enrich_cached = rget('tase:enrich')
             stocks_ready  = bool(rget('tase:stocks'))
@@ -477,11 +483,101 @@ def _enrich_from_redis_or_file():
     return data or {}
 
 
+# ── Dual-listing arbitrage ────────────────────────────────────────────────────
+#
+# Maps TASE ticker → US exchange ticker for stocks that are dual-listed.
+# Most Israeli dual-listers use the same symbol on both exchanges.
+
+DUAL_LISTED = {
+    'CYBR':  'CYBR',   # CyberArk Software       — NASDAQ
+    'TEVA':  'TEVA',   # Teva Pharmaceutical      — NYSE
+    'NICE':  'NICE',   # NICE Systems             — NASDAQ
+    'CHKP':  'CHKP',   # Check Point Software     — NASDAQ
+    'ESLT':  'ESLT',   # Elbit Systems            — NASDAQ
+    'ICL':   'ICL',    # ICL Group                — NYSE
+    'NVMI':  'NVMI',   # Nova Measuring Inst.     — NASDAQ
+    'TSEM':  'TSEM',   # Tower Semiconductor      — NASDAQ
+    'KMDA':  'KMDA',   # Kamada                   — NASDAQ
+    'RDCM':  'RDCM',   # RADCOM                   — NASDAQ
+    'MNDO':  'MNDO',   # MIND C.T.I.              — NASDAQ
+    'SPNS':  'SPNS',   # Sapiens International    — NASDAQ
+    'KRNT':  'KRNT',   # Kornit Digital           — NASDAQ
+    'CEVA':  'CEVA',   # CEVA Inc                 — NASDAQ
+    'NXSN':  'NXSN',   # NovaStar Financial?      — NASDAQ (verify)
+}
+
+
+def calc_arbitrage(tase_price_ils, us_price_usd, usd_ils_rate):
+    """
+    Calculate the price premium/discount between the TASE-listed price and
+    the US-listed price for a dual-listed stock.
+
+    Args:
+        tase_price_ils : float  — Last TASE price in ILS
+        us_price_usd   : float  — Last US price in USD
+        usd_ils_rate   : float  — Current USD/ILS exchange rate (ILS per 1 USD)
+
+    Returns:
+        float | None — Premium (+) or discount (−) as a percentage.
+                       e.g. +1.5 means TASE is 1.5 % more expensive than the US price.
+                       Returns None when any input is missing or zero.
+    """
+    if not (tase_price_ils and us_price_usd and usd_ils_rate and usd_ils_rate > 0):
+        return None
+    tase_in_usd = tase_price_ils / usd_ils_rate
+    return round((tase_in_usd - us_price_usd) / us_price_usd * 100, 2)
+
+
+def _fetch_us_prices():
+    """
+    Fetch the latest US prices for all dual-listed TASE stocks in a single
+    yfinance batch request.  Stores results in Redis under tase:us_prices
+    with a 10-minute TTL (refreshed every 5 min during market hours).
+    """
+    import yfinance as _yf_arb
+    us_syms = sorted(set(DUAL_LISTED.values()))
+    try:
+        raw = _yf_arb.download(
+            us_syms, period='2d', interval='1d',
+            progress=False, auto_adjust=True, threads=True
+        )
+        prices = {}
+        if hasattr(raw['Close'], 'columns'):          # multi-ticker: DataFrame
+            for sym in us_syms:
+                try:
+                    col = raw['Close'][sym].dropna()
+                    if not col.empty:
+                        prices[sym] = round(float(col.iloc[-1]), 4)
+                except Exception:
+                    pass
+        else:                                         # single-ticker: Series
+            col = raw['Close'].dropna()
+            if not col.empty and us_syms:
+                prices[us_syms[0]] = round(float(col.iloc[-1]), 4)
+
+        if prices:
+            rset('tase:us_prices', {'data': prices, 'timestamp': time.time()}, ttl=600)
+            # ── Verification ──────────────────────────────────────────────
+            print(f'[Arbitrage] US prices fetched — {len(prices)}/{len(us_syms)} tickers.',
+                  flush=True)
+            for sym, px in list(prices.items())[:4]:
+                print(f'[Arbitrage]   {sym}: ${px}', flush=True)
+        else:
+            print('[Arbitrage] US price fetch returned no data.', flush=True)
+    except Exception as _ae:
+        print(f'[Arbitrage] Fetch error: {_ae}', flush=True)
+
+
 # ── Enrichment merge ──────────────────────────────────────────────────────────
 
 def merge_enrichment(stocks, enrich_data=None):
     if enrich_data is None:
         enrich_data = _enrich_from_redis_or_file()
+    # Arbitrage: load US prices and exchange rate once for the whole batch
+    _us_cached       = rget('tase:us_prices') or {}
+    _us_prices_cache = _us_cached.get('data') or {}
+    _fx_cached       = rget('tase:fx') or {}
+    _rate_cache      = _fx_cached.get('ils_per_usd') or None
     out = []
     for s in stocks:
         row = dict(s)
@@ -520,6 +616,12 @@ def merge_enrichment(stocks, enrich_data=None):
         row['ffo_yield']      = e.get('ffo_yield')
         row['cap_rate_implied']= e.get('cap_rate_implied')
         row['nav_discount']   = e.get('nav_discount')
+        # ── Dual-listing arbitrage ─────────────────────────────────────────
+        _us_sym  = DUAL_LISTED.get(s['ticker'])
+        _us_px   = (_us_prices_cache.get(_us_sym) if _us_sym else None)
+        row['us_ticker'] = _us_sym
+        row['us_price']  = _us_px
+        row['arb_pct']   = calc_arbitrage(s.get('price'), _us_px, _rate_cache)
         out.append(row)
     return out
 
