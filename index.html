@@ -369,7 +369,7 @@
       display: flex; align-items: center; gap: 4px;
       flex-shrink: 0; z-index: 47;
       overflow-x: auto; white-space: nowrap;
-      position: sticky; top: 136px;  /* 102 + market-bar(34) */
+      /* pill-bar scrolls away — no sticky, keeps header slot clean */
     }
     #pill-bar::-webkit-scrollbar { display: none; }
     .pill { background: transparent; border: 1px solid var(--border2); color: var(--text2);
@@ -406,7 +406,7 @@
       background: var(--surface); border-bottom: 1px solid var(--border);
       padding: 8px 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
       flex-shrink: 0; z-index: 46;
-      position: sticky; top: 178px;  /* 136 + pill-bar(42) */
+      /* filters scrolls away too — drawer covers mobile */
     }
     .fg { display: flex; align-items: center; gap: 5px; }
     .fg label { font-size: 10px; font-weight: 600; color: var(--text3); white-space: nowrap;
@@ -434,8 +434,8 @@
       font-size: 9px; text-transform: uppercase; letter-spacing: 0.07em;
       padding: 0 7px; height: 24px; text-align: right; white-space: nowrap;
       cursor: pointer; user-select: none; border-bottom: 1px solid var(--border);
-      /* Sticks below: site-header(52) + top-tabs(50) + market-bar(34) + pill-bar(42) + filters(~48) */
-      position: sticky; top: 226px; z-index: 2;
+      /* Sticks below: site-header(52) + top-tabs(50) + market-bar(34) = 136px */
+      position: sticky; top: 136px; z-index: 2;
       font-family: 'Inter', sans-serif;
     }
     thead th:hover { color: var(--text2); background: var(--surface2); }
@@ -866,8 +866,8 @@
       }
       .filter-backdrop.mob-open { display: block; }
 
-      /* thead sticky recalc on mobile (no .filters bar) */
-      thead th { top: 162px !important; /* 92+34(market)+36(pill) */ }
+      /* thead sticky on mobile: header(52) + top-tabs(40) + market-bar(34) */
+      thead th { top: 126px !important; }
 
       /* ── Metric strip ────────────────────────────────────────────── */
       .metric-strip { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
